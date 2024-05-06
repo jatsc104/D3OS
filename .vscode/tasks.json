@@ -16,7 +16,7 @@
             "type": "shell",
             "isBackground": false,
             "command": "cargo",
-            "args": [ "make", "--no-workspace", "--profile", "development" ],
+            "args": [ "make", "--no-workspace", "--profile", "development", "grub"],
             "problemMatcher": []
         },
         {
