@@ -31,7 +31,7 @@ command = "nasm"
 args = [ "-f", "elf64", "-w+error=label-redef-late", "-o", "${ASM_OBJECT}", "${SOURCE_DIRECOTRY}/boot.asm" ]
 
 [tasks.link]
-command = "ld"
+command = "x86_64-elf-ld"
 args = [ "-n", "-T", "${LINKER_FILE}", "-o", "${KERNEL}", "${ASM_OBJECT}", "${RUST_OBJECT}" ]
 dependencies = [ "compile", "build-asm" ]
 
