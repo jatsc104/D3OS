@@ -9,7 +9,7 @@ readonly CONST_QEMU_BIOS_EFI="efi/OVMF.fd"
 readonly CONST_QEMU_ARGS="-boot d -vga std -rtc base=localtime -device isa-debug-exit"
 readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
 readonly CONST_QEMU_NEW_AUDIO_ARGS="-audiodev id=pa,driver=pa -machine pcspk-audiodev=pa"
-readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=d3os.img"
+readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=d3os.iso"
 readonly CONST_QEMU_GDB_PORT="1234"
 
 QEMU_BIOS=""
@@ -168,7 +168,7 @@ run_qemu() {
     command="${command} -machine ${QEMU_MACHINE}"
   fi
 
-  command="${command} -m ${QEMU_RAM} -cpu ${QEMU_CPU} -bios ${QEMU_BIOS} ${QEMU_ARGS} ${QEMU_BOOT_DEVICE} ${QEMU_AUDIO_ARGS}"
+  command="${command} -m ${QEMU_RAM} -cpu ${QEMU_CPU} -bios ${QEMU_BIOS} ${QEMU_ARGS} ${QEMU_BOOT_DEVICE}"
   
   printf "Running: %s\\n" "${command}"
 
@@ -191,6 +191,6 @@ if [ -z "${QEMU_BIOS}" ]; then
 fi
 
 QEMU_ARGS="${QEMU_ARGS}"
-set_audio_parameters
+#set_audio_parameters
 
 run_qemu
