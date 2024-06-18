@@ -11,6 +11,7 @@ readonly CONST_QEMU_OLD_AUDIO_ARGS="-soundhw pcspk"
 readonly CONST_QEMU_NEW_AUDIO_ARGS="-audiodev id=pa,driver=pa -machine pcspk-audiodev=pa"
 readonly CONST_QEMU_BOOT_DEVICE="-drive driver=raw,node-name=boot,file.driver=file,file.filename=d3os.iso"
 readonly CONST_QEMU_GDB_PORT="1234"
+readonly CONST_QEMU_NET="-device e1000,netdev=net0 -netdev user,id=net0"
 
 QEMU_BIOS=""
 QEMU_MACHINE="${CONST_QEMU_MACHINE_PC}"
@@ -19,7 +20,7 @@ QEMU_CPU="${CONST_QEMU_CPU}"
 QEMU_CPU_OVERWRITE="false"
 QEMU_AUDIO_ARGS="${CONST_QEMU_NEW_AUDIO_ARGS}"
 QEMU_BOOT_DEVICE="${CONST_QEMU_BOOT_DEVICE}"
-QEMU_ARGS="${CONST_QEMU_ARGS}"
+QEMU_ARGS="${CONST_QEMU_ARGS} ${CONST_QEMU_NET}"
 QEMU_DEBUG_TYPE=""
 
 version_lt() {
