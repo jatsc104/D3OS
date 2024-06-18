@@ -149,6 +149,8 @@ impl TryFrom<u8> for InterruptVector {
             value if value == InterruptVector::Lpt2 as u8 => Ok(InterruptVector::Lpt2),
             value if value == InterruptVector::Floppy as u8 => Ok(InterruptVector::Floppy),
             value if value == InterruptVector::Lpt1 as u8 => Ok(InterruptVector::Lpt1),
+//TODO: replace Free3 with the correct interrupt number - meaning replace it with the interrupt number for the e1000
+            value if value == InterruptVector::Free3 as u8 => Ok(InterruptVector::Free3),
             value if value == InterruptVector::Mouse as u8 => Ok(InterruptVector::Mouse),
             value if value == InterruptVector::Fpu as u8 => Ok(InterruptVector::Fpu),
             value if value == InterruptVector::PrimaryAta as u8 => Ok(InterruptVector::PrimaryAta),
