@@ -8,3 +8,9 @@ pub mod terminal;
 pub mod lfb_terminal;
 pub mod serial;
 pub mod pci;
+pub mod e1000_pci;
+pub mod e1000_driver;
+pub mod e1000_interrupt;
+pub mod e1000_register;
+pub mod e1000_descriptor;
+
