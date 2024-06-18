@@ -8,15 +8,14 @@ use super::e1000_pci::{enable_device, get_e1000_device, get_interrupt_line, map_
 use super::e1000_descriptor::{set_up_rx_desc_ring};
 
 
-pub struct IntelE1000Device<'a>{
-    pci_device: &'a EndpointHeader,
+pub struct IntelE1000Device{
     interrupt_line: InterruptLine,
     registers: E1000Registers,
 }
 
-impl<'a> IntelE1000Device<'a>{
+impl IntelE1000Device{
 
-    pub fn new(e1000_device :&'a EndpointHeader) -> Self{
+    pub fn new() -> Self{
         let pci_bus = pci_bus();
 
         let e1000_device = get_e1000_device(pci_bus);
@@ -37,7 +36,6 @@ impl<'a> IntelE1000Device<'a>{
         set_up_rx_desc_ring(&registers);
 
         IntelE1000Device{
-            pci_device: e1000_device,
             interrupt_line: interrupt_line,
             registers: registers,
         }

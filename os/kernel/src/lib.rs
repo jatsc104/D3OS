@@ -25,6 +25,7 @@ use crate::log::Logger;
 use crate::process::scheduler::Scheduler;
 use crate::process::thread::Thread;
 use alloc::boxed::Box;
+use device::e1000_driver::IntelE1000Device;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
 use ::log::{Level, Log, Record};
@@ -113,6 +114,7 @@ static SERIAL_PORT: Once<SerialPort> = Once::new();
 static TERMINAL: Once<LFBTerminal> = Once::new();
 static PS2: Once<PS2> = Once::new();
 static PCI: Once<PciBus> = Once::new();
+static E1000: Once<IntelE1000Device> = Once::new();
 
 pub fn init_efi_system_table(table: SystemTable<Runtime>) {
     EFI_SYSTEM_TABLE.call_once(|| EfiSystemTable::new(table));
@@ -177,6 +179,10 @@ pub fn init_keyboard() {
 
 pub fn init_pci() {
     PCI.call_once(|| PciBus::scan());
+}
+
+pub fn init_e1000(){
+    E1000.call_once(|| IntelE1000Device::new());
 }
 
 pub fn init_initrd(module: &ModuleTag) {
