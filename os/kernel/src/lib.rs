@@ -28,7 +28,7 @@ use alloc::boxed::Box;
 use device::e1000_driver::IntelE1000Device;
 use core::fmt::Arguments;
 use core::panic::PanicInfo;
-use ::log::{Level, Log, Record};
+use ::log::{error, Level, Log, Record};
 use acpi::AcpiTables;
 use multiboot2::ModuleTag;
 use spin::{Mutex, Once, RwLock};
@@ -170,8 +170,15 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
 pub fn init_keyboard() {
     PS2.call_once(|| {
         let mut ps2 = PS2::new();
-        ps2.init_controller().unwrap_or_else(|err| panic!("Failed to initialize PS2 controller (Error: {:?})", err));
-        ps2.init_keyboard().unwrap_or_else(|err| panic!("Failed to initialize PS2 keyboard (Error: {:?})", err));
+        match ps2.init_controller() {
+            Ok(_) => {
+                match ps2.init_keyboard() {
+                    Ok(_) => {}
+                    Err(error) => error!("Keyboard initialization failed: {:?}", error)
+                }
+            }
+            Err(error) => error!("PS/2 controller initialization failed: {:?}", error)
+        }
 
         return ps2;
     });
@@ -194,7 +201,7 @@ pub fn init_initrd(module: &ModuleTag) {
         unsafe { memory::physical::reserve(initrd_frames); }
 
         let initrd_bytes = unsafe { core::slice::from_raw_parts(module.start_address() as *const u8, (module.end_address() - module.start_address()) as usize) };
-        TarArchiveRef::new(initrd_bytes)
+        TarArchiveRef::new(initrd_bytes).expect("Failed to create TarArchiveRef from Multiboot2 module")
     });
 }
 
@@ -272,7 +279,7 @@ pub fn terminal() -> &'static dyn Terminal {
 }
 
 pub fn ps2_devices() -> &'static PS2 {
-    PS2.get().expect("Trying to access keyboard before initialization!")
+    PS2.get().expect("Trying to access PS/2 devices before initialization!")
 }
 
 pub fn pci_bus() -> &'static PciBus {

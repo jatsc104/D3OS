@@ -5,9 +5,9 @@ use alloc::boxed::Box;
 use log::info;
 use nolock::queues::mpmc::bounded::scq::{Receiver, Sender};
 use nolock::queues::{mpmc, DequeueError};
-use ps2::error::{ControllerError, KeyboardError};
 use ps2::flags::{ControllerConfigFlags, KeyboardLedFlags};
 use ps2::{Controller, KeyboardType};
+use ps2::error::{ControllerError, KeyboardError};
 use spin::Mutex;
 use crate::{apic, interrupt_dispatcher, ps2_devices};
 
@@ -70,7 +70,7 @@ impl InterruptHandler for KeyboardInterruptHandler {
 impl PS2 {
     pub fn new() -> Self {
         Self {
-            controller: unsafe { Mutex::new(Controller::new()) },
+            controller: unsafe { Mutex::new(Controller::with_timeout(1000000)) },
             keyboard: Keyboard::new(KEYBOARD_BUFFER_CAPACITY),
         }
     }
@@ -88,12 +88,7 @@ impl PS2 {
 
         // Disable interrupts and translation
         let mut config = controller.read_config()?;
-        config.set(
-            ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT
-                | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT
-                | ControllerConfigFlags::ENABLE_TRANSLATE,
-            false,
-        );
+        config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT | ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT | ControllerConfigFlags::ENABLE_TRANSLATE, false);
         controller.write_config(config)?;
 
         // Perform self test on controller
@@ -106,7 +101,8 @@ impl PS2 {
         }
 
         // Check if keyboard is present
-        if controller.test_keyboard().is_ok() {
+        let test_result = controller.test_keyboard();
+        if test_result.is_ok() {
             // Enable keyboard
             info!("First port detected");
             controller.enable_keyboard()?;
@@ -114,22 +110,9 @@ impl PS2 {
             config.set(ControllerConfigFlags::ENABLE_KEYBOARD_INTERRUPT, true);
             controller.write_config(config)?;
             info!("First port enabled");
-        } else {
-            panic!("No keyboard detected!");
         }
 
-        // Check if mouse is present
-        if controller.test_mouse().is_ok() {
-            // Enable mouse
-            info!("Second port detected");
-            controller.enable_keyboard()?;
-            config.set(ControllerConfigFlags::DISABLE_MOUSE, false);
-            config.set(ControllerConfigFlags::ENABLE_MOUSE_INTERRUPT, true);
-            controller.write_config(config)?;
-            info!("Second port enabled");
-        }
-
-        return Ok(());
+        return test_result;
     }
 
     pub fn init_keyboard(&mut self) -> Result<(), KeyboardError> {
@@ -137,9 +120,7 @@ impl PS2 {
         let mut controller = self.controller.lock();
 
         // Perform self test on keyboard
-        if controller.keyboard().reset_and_self_test().is_err() {
-            panic!("Keyboard is not working!");
-        }
+        controller.keyboard().reset_and_self_test()?;
         info!("Keyboard has been reset and self test result is OK");
 
         // Enable keyboard translation if needed
@@ -148,9 +129,7 @@ impl PS2 {
         info!("Detected keyboard type [{:?}]", kb_type);
 
         match kb_type {
-            KeyboardType::ATWithTranslation
-            | KeyboardType::MF2WithTranslation
-            | KeyboardType::ThinkPadWithTranslation => {
+            KeyboardType::ATWithTranslation | KeyboardType::MF2WithTranslation | KeyboardType::ThinkPadWithTranslation => {
                 info!("Enabling keyboard translation");
                 let mut config = controller.read_config()?;
                 config.set(ControllerConfigFlags::ENABLE_TRANSLATE, true);
@@ -165,9 +144,7 @@ impl PS2 {
         controller.keyboard().set_scancode_set(1)?;
         controller.keyboard().set_typematic_rate_and_delay(0)?;
         controller.keyboard().set_leds(KeyboardLedFlags::empty())?;
-        controller.keyboard().enable_scanning()?;
-
-        return Ok(());
+        controller.keyboard().enable_scanning()
     }
 
     pub fn keyboard(&self) -> &Keyboard {
