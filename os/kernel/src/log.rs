@@ -1,3 +1,12 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: log                                                             ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Logger implementation. Support one or several output streams.   ║
+   ║         Messages are dumped on each output stream.                      ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, HHU                                             ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 use crate::device::serial;
 use crate::device::serial::ComPort;
 use crate::device::serial::SerialPort;
@@ -42,10 +51,11 @@ impl log::Log for Logger {
                 serial.write_str("[");
                 serial.write_str(level_token(level));
                 serial.write_str("]");
-                serial.write_str(ansi::FOREGROUND_DEFAULT);
+                serial.write_str(ansi::FOREGROUND_MAGENTA);
                 serial.write_str("[");
                 serial.write_str(file);
                 serial.write_str("] ");
+                serial.write_str(ansi::FOREGROUND_DEFAULT);
 
                 if allocator().is_initialized() {
                     serial.write_str(record.args().to_string().as_str());
@@ -60,8 +70,8 @@ impl log::Log for Logger {
             let seconds = systime / 1000;
             let fraction = systime % 1000;
 
-            let string = format!("{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}] {}\n", ansi::FOREGROUND_CYAN, seconds, fraction,
-                                 ansi_color(level), level_token(level),ansi::FOREGROUND_DEFAULT, file, line, record.args());
+            let string = format!("{}[{}.{:0>3}]{}[{}]{}[{}@{:0>3}]{} {}\n", ansi::FOREGROUND_CYAN, seconds, fraction,
+                                 ansi_color(level), level_token(level),ansi::FOREGROUND_MAGENTA, file, line, ansi::FOREGROUND_DEFAULT, record.args());
 
             for i in 0..self.streams.len() {
                 logger.streams[i].write_str(&string);

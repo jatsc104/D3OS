@@ -1,3 +1,12 @@
+/* ╔═════════════════════════════════════════════════════════════════════════╗
+   ║ Module: lib                                                             ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Descr.: Main rust file of OS. Includes the panic handler as well as all ║
+   ║         globals with init functions.                                    ║
+   ╟─────────────────────────────────────────────────────────────────────────╢
+   ║ Author: Fabian Ruhland, HHU                                             ║
+   ╚═════════════════════════════════════════════════════════════════════════╝
+*/
 #![feature(allocator_api)]
 #![feature(alloc_layout_extra)]
 #![feature(const_mut_refs)]
@@ -39,10 +48,11 @@ use x86_64::structures::idt::InterruptDescriptorTable;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::tss::TaskStateSegment;
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::PhysAddr;
 use crate::device::pci::PciBus;
 use crate::memory::PAGE_SIZE;
 use crate::process::process::ProcessManager;
+use crate::syscall::syscall_dispatcher::CoreLocalStorage;
 
 extern crate alloc;
 
@@ -54,6 +64,7 @@ pub mod memory;
 pub mod log;
 pub mod syscall;
 pub mod process;
+pub mod consts;
 
 pub mod built_info {
     // The file has been placed there by the build script.
@@ -68,7 +79,7 @@ fn panic(info: &PanicInfo) -> ! {
         let record = Record::builder()
             .level(Level::Error)
             .file(Some("panic"))
-            .args(*info.message().unwrap_or(&Arguments::new_const(&["A panic occurred!"])))
+            .args(info.message())
             .build();
 
         unsafe { logger().force_unlock() };
@@ -96,6 +107,7 @@ impl EfiSystemTable {
 static GDT: Mutex<GlobalDescriptorTable> = Mutex::new(GlobalDescriptorTable::new());
 static TSS: Mutex<TaskStateSegment> = Mutex::new(TaskStateSegment::new());
 static IDT: Mutex<InterruptDescriptorTable> = Mutex::new(InterruptDescriptorTable::new());
+static CORE_LOCAL_STORAGE: Mutex<CoreLocalStorage> = Mutex::new(CoreLocalStorage::new());
 static EFI_SYSTEM_TABLE: Once<EfiSystemTable> = Once::new();
 static ACPI_TABLES: Once<Mutex<AcpiTables<AcpiHandler>>> = Once::new();
 static INIT_RAMDISK: Once<TarArchiveRef> = Once::new();
@@ -161,10 +173,10 @@ pub fn init_terminal(buffer: *mut u8, pitch: u32, width: u32, height: u32, bpp: 
     terminal.clear();
     TERMINAL.call_once(|| terminal);
 
-    scheduler().ready(Thread::new_kernel_thread(Box::new(|| {
+    scheduler().ready(Thread::new_kernel_thread(|| {
         let mut cursor_thread = CursorThread::new(&TERMINAL.get().unwrap());
         cursor_thread.run();
-    })));
+    }));
 }
 
 pub fn init_keyboard() {
@@ -219,6 +231,10 @@ pub fn tss() -> &'static Mutex<TaskStateSegment> {
 
 pub fn idt() -> &'static Mutex<InterruptDescriptorTable> {
     &IDT
+}
+
+pub fn core_local_storage() -> &'static Mutex<CoreLocalStorage> {
+    &CORE_LOCAL_STORAGE
 }
 
 pub fn acpi_tables() -> &'static Mutex<AcpiTables<AcpiHandler>> {
@@ -284,14 +300,4 @@ pub fn ps2_devices() -> &'static PS2 {
 
 pub fn pci_bus() -> &'static PciBus {
     PCI.get().expect("Trying to access PCI bus before initialization!")
-}
-
-#[no_mangle]
-pub extern "C" fn tss_set_rsp0(rsp0: u64) {
-    tss().lock().privilege_stack_table[0] = VirtAddr::new(rsp0);
-}
-
-#[no_mangle]
-pub extern "C" fn tss_get_rsp0() -> u64 {
-    tss().lock().privilege_stack_table[0].as_u64()
 }
