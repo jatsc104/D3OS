@@ -1,8 +1,11 @@
 use alloc::vec::Vec;
+use log::info;
 use core::mem::MaybeUninit;
 
 use alloc::boxed::Box;
 use x86_64::registers;
+use crate::device::pit::Timer;
+
 use super::e1000_register::E1000Registers;//::{write_rdbah, write_rdbal, write_rdlen, write_rdh, write_rdt};
 
 // Define the transmit descriptor
@@ -19,7 +22,7 @@ struct E1000TxDescriptor {
 
 // Define the receive descriptor
 #[repr(C)]
-struct E1000RxDescriptor {
+pub struct E1000RxDescriptor {
     buffer_addr: u64,
     length: u16,
     csum: u16,
@@ -28,7 +31,7 @@ struct E1000RxDescriptor {
     special: u16,
 }
 
-pub fn set_up_rx_desc_ring(registers: &E1000Registers){
+pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>{
 
 //NOTE: after into_raw, box is consumed and memory has to be managed, cleanup later with Box::from_raw and use Box destructor -> DONE
 //NOTE: NOT fit for Multithreading, in case of Multithreading being implemented, synchronise access to receive_ring
@@ -76,10 +79,12 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers){
     E1000Registers::write_rdh(registers, 0);
     E1000Registers::write_rdt(registers, RECEIVE_RING_SIZE as u32 - 1);
 
+    info!("Receive descriptor ring set up");
+    info!("Receive descriptor ring address: {:?}", ring_addr);
+    info!("RDT - Test: {:?}", E1000Registers::read_rdt(registers));
+    Timer::wait(4000);
 
-
-
-
+    receive_ring
 
 }
 
@@ -148,5 +153,142 @@ impl Default for E1000RxDescriptor {
     }
 }
 
+pub struct TxBuffer{
+    //check alignment rules in intel Doc;
+    //alignment on arbitrary byte size
+    //maximum packet size is 16288 bytes
+    data: Vec<u8>,
+}
 
+impl TxBuffer{
+    pub fn new(data: Vec<u8>) -> Self{
+        Self{data}
+    }
+
+    pub fn size(&self) -> u16{
+        self.data.len() as u16
+    }
+
+    pub fn address(&self) -> u64{
+        self.data.as_ptr() as u64
+    }
+}
+
+
+
+pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>{
+//NOT READY YET; FIX INITIALISING
+    const NUM_DESCRIPTORS: usize = 64;
+    // Allocate memory for the descriptors.
+    let mut descriptors: Vec<E1000TxDescriptor> = Vec::with_capacity(NUM_DESCRIPTORS);
+
+    // Initialize each descriptor.
+    for descriptor in descriptors.iter_mut() {
+        // Set the buffer address to the address of some buffer.
+        // This is where the E1000 card will read data to transmit.
+        descriptor.buffer_addr = 0;
+
+        // Set the length to the length of the data to transmit.
+        descriptor.length = 0;
+
+//TODO: Set the command field to indicate that this descriptor is ready to be used.
+        //descriptor.cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+
+        // Set the status field to 0 to indicate that this descriptor has not been used yet.
+        descriptor.status = 0;
+    }
+
+    E1000Registers::write_tdbal(registers, descriptors.as_ptr() as u32);
+    E1000Registers::write_tdbah(registers, ((descriptors.as_ptr() as u64 )>>32) as u32);
+    //sizeof(E1000TxDescriptor) should be 16 bytes
+    E1000Registers::write_tdlen(registers, (NUM_DESCRIPTORS * core::mem::size_of::<E1000TxDescriptor>()) as u32);
+    E1000Registers::write_tdh(registers, 0);
+    E1000Registers::write_tdt(registers, NUM_DESCRIPTORS as u32 - 1);
+
+    descriptors
+}
+
+
+//passing tx:ring as slice bc is more flexible
+pub fn conncect_buffer_to_descriptors(tx_ring: &mut [E1000TxDescriptor], tx_buffer: &TxBuffer, registers: &E1000Registers){
+    let packets = create_packets(tx_buffer);
+
+    const HEADER_SIZE: usize = 14; // ethernet header size
+    const MAX_DESCRIPTOR_SIZE: usize = 1500; //limited through ethernet frame size - jumbo frames with 9728 bytes should be supported as well
+    const E1000_TXD_CMD_RS: u8 = 1 << 3;
+    const E1000_TXD_CMD_EOP: u8 = 1 << 0;
+
+    //are these variables faster than using the registers directly? - i suppose, but do not know
+    let tdt = E1000Registers::read_tdt(registers) as usize;
+    let mut tdh = E1000Registers::read_tdh(registers) as usize;
+    for packet in packets{
+        //wait for room in the ring buffer
+        while(tdt + 1)%tx_ring.len() == tdh{
+            //update tdh - card has responsibility to update tdh
+            tdh = E1000Registers::read_tdh(registers) as usize;
+        }
+        //assign header to seperate descriptor
+        let header = &packet[..HEADER_SIZE];
+        let descriptor = &mut tx_ring[tdt];
+        descriptor.buffer_addr = header.as_ptr() as u64;
+        descriptor.length = header.len() as u16;
+        descriptor.cmd = E1000_TXD_CMD_RS;
+        descriptor.status = 0;
+        //update tdt
+        //tdt = (tdt + 1) % tx_ring.len();
+        E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
+
+        //assign the payload to one or more descriptors
+        let mut payload = &packet[HEADER_SIZE..];
+        for chunk in payload.chunks(MAX_DESCRIPTOR_SIZE){
+            //wait for room in the ring buffer
+            while(tdt + 1)%tx_ring.len() == tdh{
+            //update tdh - card has responsibility to update tdh
+            tdh = E1000Registers::read_tdh(registers) as usize;
+        }
+            let descriptor = &mut tx_ring[tdt];
+            descriptor.buffer_addr = chunk.as_ptr() as u64;
+            descriptor.length = chunk.len() as u16;
+            descriptor.cmd = E1000_TXD_CMD_RS;
+            descriptor.status = 0;
+            //update tdt
+            //tdt = (tdt + 1) % tx_ring.len();
+            E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
+        }
+        //old tdt is set to EOP
+        tx_ring[(tdt)%tx_ring.len()].cmd |= E1000_TXD_CMD_EOP;
+    }
+}
+
+pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
+    //placeholders - inject dest and src mac per parameter later
+    let destination_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+    let source_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x57];
+    let ethertype: [u8; 2] = [0x08, 0x00]; //0x0800 is Ethertype for IPv4
+    //combine into one header
+    let mut ethernet_header: Vec<u8>= Vec::new();
+    ethernet_header.extend_from_slice(&destination_mac);
+    ethernet_header.extend_from_slice(&source_mac);
+    ethernet_header.extend_from_slice(&ethertype);
+
+    const MAX_PACKET_SIZE: usize = 1500; //limited through ethernet frame size - jumbo frames with 9728 bytes should be supported as well
+
+
+    let mut packets = Vec::new();
+    for chunk in tx_buffer.data.chunks(MAX_PACKET_SIZE){
+        let mut packet = Vec::new();
+        //Add Header
+        packet.extend_from_slice(&ethernet_header);
+        //Add Payload
+        packet.extend_from_slice(chunk);
+//TODO: HEADER GETS RESIZED RIGHT NOW AS WELL - FIX THIS ASAP - resolved?
+        //Pad last/header packet to Max size so all packets are same size - helps with debugging
+        if packet.len() < MAX_PACKET_SIZE{
+            //packet.extend_from_slice(&[0; MAX_PACKET_SIZE - chunk.len()]); - needs to know chunk.len() at compile time
+            packet.resize(MAX_PACKET_SIZE, 0);
+        }
+        packets.push(packet);
+    }
+    packets
+}
 
