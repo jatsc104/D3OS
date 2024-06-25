@@ -20,9 +20,12 @@ pub struct E1000Registers{
     fcttv:u64,  //flow control transmit timer value
     tctl:u64,   //transmit control
     rctl:u64,   //receive control
+
     tdbal:u64,  //transmit descriptor base address low
     tdbah:u64,  //transmit descriptor base address high
-    //tdlen:u32,  //transmit descriptor length
+    tdlen:u64,  //transmit descriptor length
+    tdh:u64,
+    tdt:u64,
     //head and tail also available - table 13-2
     rdbal:u64,  //receive descriptor base address low
     rdbah:u64,  //receive descriptor base address high
@@ -50,6 +53,9 @@ impl E1000Registers{
             rctl: mmio_address_u64 + 0x0100,
             tdbal: mmio_address_u64 + 0x3800,
             tdbah: mmio_address_u64 + 0x3804,
+            tdlen: mmio_address_u64 + 0x3808,
+            tdh: mmio_address_u64 + 0x3810,
+            tdt: mmio_address_u64 + 0x3818,
             rdbal: mmio_address_u64 + 0x2800,
             rdbah: mmio_address_u64 + 0x2804,
             rdlen: mmio_address_u64 + 0x2808,
@@ -152,5 +158,43 @@ impl E1000Registers{
             core::ptr::read_volatile(self.rdt as *const u32)
         }
     }
+
+    pub fn write_tdbal(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.tdbal as *mut u32, value);
+        }
+    }
+    pub fn write_tdbah(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.tdbah as *mut u32, value);
+        }
+    }
+    pub fn write_tdlen(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.tdlen as *mut u32, value);
+        }
+    }
+
+    pub fn write_tdh(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.tdh as *mut u32, value);
+        }
+    }
+    pub fn read_tdh(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.tdh as *const u32)
+        }
+    }
+    pub fn write_tdt(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.tdt as *mut u32, value);
+        }
+    }
+    pub fn read_tdt(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.tdt as *const u32)
+        }
+    }
+
 
 }
