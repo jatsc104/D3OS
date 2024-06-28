@@ -88,6 +88,7 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
 
 }
 
+//rewrite so it doesnt dealloc and alloc memory all the time, rather fill old memory with 0's and reuse it
 pub fn replenish_rx_desc_ring(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers){
     const BUFFER_SIZE: usize = 2048; //maybe change later, can be 256, 512, 1024, 2048, 4096, 8192, 16384 Bytes
     const E1000_RX_STATUS_DD: u8 = 1 << 0;
@@ -210,7 +211,7 @@ pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>
 
 
 //passing tx:ring as slice bc is more flexible
-pub fn conncect_buffer_to_descriptors(tx_ring: &mut [E1000TxDescriptor], tx_buffer: &TxBuffer, registers: &E1000Registers){
+pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut [E1000TxDescriptor], tx_buffer: &TxBuffer, registers: &E1000Registers){
     let packets = create_packets(tx_buffer);
 
     const HEADER_SIZE: usize = 14; // ethernet header size
@@ -290,5 +291,47 @@ pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
         packets.push(packet);
     }
     packets
+}
+
+pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, packets: &mut Vec<Vec<u8>>){
+    //packets should be owned by the caller to avoid transfering ownership upwards the calling hierarchy
+    //packets and registers not thread safe
+    const E1000_RX_STATUS_DD: u8 = 1 << 0;
+
+    for descriptor in receive_ring.iter_mut(){
+        //have the read here leads to some overhead, but rdt can stay immutable and each loop iteration can be synchronised seperately in case of multithreading
+        let rdt = E1000Registers::read_rdt(registers) as usize;
+        if descriptor.status & E1000_RX_STATUS_DD != 0{
+            //retrieve packet data and its length
+            let length = descriptor.length as usize;
+            let packet_data = unsafe{
+                core::slice::from_raw_parts(descriptor.buffer_addr as *const u8, length)
+            };
+
+            //error checking - drop packet if error
+            if descriptor.errors != 0{
+
+                //reset status
+                descriptor.status = 0;
+
+                //advance rdt
+                E1000Registers::write_rdt(registers, ((rdt + 1) % receive_ring.len()) as u32);
+
+                continue;
+            }
+
+            //add potential packet filter here
+
+            //add packet to provided Vector
+            packets.push(packet_data.to_vec());
+            //calling function still needs to sort packets between multiple programs - is that my responisbilty or the network stacks? - should be done by transport layer
+
+            //reset status 
+            descriptor.status = 0;
+
+            //advance rdt
+            E1000Registers::write_rdt(registers, ((rdt + 1) % receive_ring.len()) as u32);
+        }
+    }
 }
 
