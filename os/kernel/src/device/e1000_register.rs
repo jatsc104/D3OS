@@ -33,6 +33,9 @@ pub struct E1000Registers{
     rdh:u64,    //receive descriptor head
     rdt:u64,    //receive descriptor tail
     //head and tail also available - table 13-2
+
+    //interrupt related registers
+    icr:u64,    //interrupt cause read register
 }
 
 impl E1000Registers{
@@ -67,6 +70,9 @@ impl E1000Registers{
             fcah: mmio_address_u64 + 0x002C,
             fct: mmio_address_u64 + 0x0030,
             fcttv: mmio_address_u64 + 0x0170,
+
+            //interrupt related registers
+            icr: mmio_address_u64 + 0x00C0,
         }
     }
 
@@ -193,6 +199,23 @@ impl E1000Registers{
     pub fn read_tdt(&self) -> u32{
         unsafe{
             core::ptr::read_volatile(self.tdt as *const u32)
+        }
+    }
+
+    pub fn read_icr(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.icr as *const u32)
+        }
+    }
+    pub fn write_icr(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.icr as *mut u32, value);
+        }
+    }
+
+    pub fn read_status(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.status as *const u32)
         }
     }
 
