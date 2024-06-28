@@ -24,11 +24,9 @@ impl IntelE1000Device{
         enable_device(e1000_device, pci_bus);
     //TODO: do rest of interrupt later
         let interrupt_line = get_interrupt_line(pci_bus, e1000_device);
-        //also registers interrupt handler and configures apic
-        map_irq_to_vector(interrupt_line);
         info!("Interrupt line: {}", interrupt_line);
         Timer::wait(1000);
-
+        
         //need mmio(base)_adress for controller (register access)
         let mmio_adress = map_mmio_space(pci_bus, e1000_device);
         info!("MMIO address: {:?}", mmio_adress.as_u64());
@@ -36,6 +34,9 @@ impl IntelE1000Device{
         //let controller...
         let registers = E1000Registers::new(mmio_adress);
         registers.init_config_e1000();
+        
+        //also registers interrupt handler and configures apic
+        map_irq_to_vector(interrupt_line, registers);
 
         //set up descriptor rings
         set_up_rx_desc_ring(&registers);
