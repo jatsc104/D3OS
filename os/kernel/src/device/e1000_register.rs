@@ -38,6 +38,35 @@ pub struct E1000Registers{
     icr:u64,    //interrupt cause read register
 }
 
+impl Clone for E1000Registers {
+    fn clone(&self) -> Self {
+        Self {
+            ctrl: self.ctrl,
+            status: self.status,
+            eerd: self.eerd,
+            mdic: self.mdic,
+            fcal: self.fcal,
+            fcah: self.fcah,
+            fct: self.fct,
+            fcttv: self.fcttv,
+            tctl: self.tctl,
+            rctl: self.rctl,
+            tdbal: self.tdbal,
+            tdbah: self.tdbah,
+            tdlen: self.tdlen,
+            tdh: self.tdh,
+            tdt: self.tdt,
+            rdbal: self.rdbal,
+            rdbah: self.rdbah,
+            rdlen: self.rdlen,
+            rdh: self.rdh,
+            rdt: self.rdt,
+            icr: self.icr,
+        }
+    }
+
+}
+
 impl E1000Registers{
     pub fn new(mmio_address: VirtAddr) -> Self{
         let mmio_address_u64 = mmio_address.as_u64();
@@ -152,6 +181,11 @@ impl E1000Registers{
     pub fn write_rdh(&self, value: u32){
         unsafe{
             core::ptr::write_volatile(self.rdh as *mut u32, value);
+        }
+    }
+    pub fn read_rdh(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.rdh as *const u32)
         }
     }
     pub fn write_rdt(&self, value: u32){
