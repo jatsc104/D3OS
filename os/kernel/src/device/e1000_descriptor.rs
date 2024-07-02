@@ -10,7 +10,7 @@ use super::e1000_register::E1000Registers;//::{write_rdbah, write_rdbal, write_r
 
 // Define the transmit descriptor
 #[repr(C)]
-struct E1000TxDescriptor {
+pub struct E1000TxDescriptor {
     buffer_addr: u64,
     length: u16,
     cso: u8,
@@ -297,6 +297,7 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
     //packets should be owned by the caller to avoid transfering ownership upwards the calling hierarchy
     //packets and registers not thread safe
     const E1000_RX_STATUS_DD: u8 = 1 << 0;
+    let receive_ring_len = receive_ring.len();
 
     for descriptor in receive_ring.iter_mut(){
         //have the read here leads to some overhead, but rdt can stay immutable and each loop iteration can be synchronised seperately in case of multithreading
@@ -315,7 +316,7 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
                 descriptor.status = 0;
 
                 //advance rdt
-                E1000Registers::write_rdt(registers, ((rdt + 1) % receive_ring.len()) as u32);
+                E1000Registers::write_rdt(registers, ((rdt + 1) % receive_ring_len) as u32);
 
                 continue;
             }
@@ -330,8 +331,44 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
             descriptor.status = 0;
 
             //advance rdt
-            E1000Registers::write_rdt(registers, ((rdt + 1) % receive_ring.len()) as u32);
+            E1000Registers::write_rdt(registers, ((rdt + 1) % receive_ring_len) as u32);
         }
     }
+}
+
+pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, packets: &mut Vec<Vec<u8>>){
+    let rdh = E1000Registers::read_rdh(registers);
+    let rdt = E1000Registers::read_rdt(registers);
+    
+    //check if there are packets to process
+    if rdh != rdt{
+        const E1000_RX_STATUS_DD: u8 = 1 << 0;
+        let descriptor = &mut receive_ring[rdt as usize];
+        //check if descriptor is ready to be processed
+        if descriptor.status & E1000_RX_STATUS_DD != 0 {
+            //packet is ready to be processed
+            let length = descriptor.length as usize;
+            let packet_data = unsafe{
+                core::slice::from_raw_parts(descriptor.buffer_addr as *const u8, length)
+            };
+            descriptor.status = 0;
+
+            //error check - drop packet if true
+            if descriptor.errors != 0{
+                //advance rdt
+                E1000Registers::write_rdt(registers, (rdt + 1) % receive_ring.len() as u32);
+                return;
+            }
+
+            //add potential packet filter here
+
+            //add packet to provided Vector
+            packets.push(packet_data.to_vec());
+
+            //advance rdt
+            E1000Registers::write_rdt(registers, (rdt + 1) % receive_ring.len() as u32);
+        }
+    }
+    
 }
 
