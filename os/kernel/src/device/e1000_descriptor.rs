@@ -1,6 +1,7 @@
-use alloc::vec::Vec;
+use alloc::{rc::Rc, vec::Vec};
 use log::info;
 use core::mem::MaybeUninit;
+use spin::MutexGuard;
 
 use alloc::boxed::Box;
 use x86_64::registers;
@@ -224,9 +225,11 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut [E1000TxDescriptor], tx_b
     let mut tdh = E1000Registers::read_tdh(registers) as usize;
     for packet in packets{
         //wait for room in the ring buffer
+        //wrap around necessary since tdt could be at the end of the ring buffer
         while(tdt + 1)%tx_ring.len() == tdh{
             //update tdh - card has responsibility to update tdh
             tdh = E1000Registers::read_tdh(registers) as usize;
+            //this would be a good spot to make room for other threads in a multithreaded environment, i can wait for a maybe up to 1ms
         }
         //assign header to seperate descriptor
         let header = &packet[..HEADER_SIZE];
@@ -293,7 +296,7 @@ pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
     packets
 }
 
-pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, packets: &mut Vec<Vec<u8>>){
+pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, mut packets: MutexGuard<Vec<Vec<u8>>>){
     //packets should be owned by the caller to avoid transfering ownership upwards the calling hierarchy
     //packets and registers not thread safe
     const E1000_RX_STATUS_DD: u8 = 1 << 0;
@@ -336,7 +339,7 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
     }
 }
 
-pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, packets: &mut Vec<Vec<u8>>){
+pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, mut packets:  MutexGuard<Vec<Vec<u8>>>){
     let rdh = E1000Registers::read_rdh(registers);
     let rdt = E1000Registers::read_rdt(registers);
     

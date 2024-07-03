@@ -1,6 +1,9 @@
 use acpi::platform::interrupt;
 use alloc::vec::Vec;
 use log::info;
+use spin::Mutex;
+
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::device::pit::Timer;
 use crate::pci_bus;
@@ -10,6 +13,12 @@ use super::e1000_register::E1000Registers;
 use super::e1000_pci::{enable_device, get_e1000_device, get_interrupt_line, map_mmio_space};
 use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxDescriptor, E1000TxDescriptor};
 //use crate::alloc::rc::Rc;
+
+//these variables are necessary because of the lack of Arc
+//it can be argued that these global variables are "okay" because both need to exist for the entire lifetime of the driver, which is likely the lifetime of the whole system
+//putting them in a data structure like IntelE1000Device sadly does not work, since i also need two mutable refenerences to each of them - producer and consumer
+pub static RX_NEW_DATA: AtomicBool = AtomicBool::new(false);
+pub static RECEIVED_BUFFER: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
 
 
 pub struct RxRingVecToPtr{
@@ -89,7 +98,7 @@ impl IntelE1000Device{
         //else, think about injecting these into map_irq_to_vector
         //talk to fabian about this
         let rx_ring_ptr = RxRingVecToPtr::new(&rx_desc_ring);
-        let rx_buffer_ptr = RxBufferVecToPtr::new(&received_buffer);
+        //let rx_buffer_ptr = RxBufferVecToPtr::new(&received_buffer);
         
         //also registers interrupt handler and configures apic
         map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, received_buffer);
@@ -97,7 +106,7 @@ impl IntelE1000Device{
         IntelE1000Device{
             interrupt_line,
             registers,
-            //received_buffer,
+            //received_buffer: received_buffer,
             //rx_desc_ring,
             tx_desc_ring,
         }

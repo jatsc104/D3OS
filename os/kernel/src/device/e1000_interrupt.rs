@@ -4,13 +4,16 @@ use log::info;
 use pci_types::InterruptLine;
 use x86_64::registers;
 
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use crate::device::e1000_descriptor::{retrieve_packets, rx_ring_pop, E1000RxDescriptor};
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::interrupt::interrupt_dispatcher::{InterruptVector};
 use crate::{apic, interrupt, interrupt_dispatcher};
 use crate::device::e1000_register::E1000Registers;
 use crate::device::e1000_driver::{IntelE1000Device, RxBufferVecToPtr, RxRingVecToPtr};
-use crate::alloc::rc::Rc;
+use crate::device::e1000_driver::{RX_NEW_DATA, RECEIVED_BUFFER};
+//use crate::alloc::rc::Rc;
 
 struct E1000InterruptHandler{
     registers: E1000Registers,
@@ -74,7 +77,11 @@ impl InterruptHandler for E1000InterruptHandler{
         if interrupt_cause & (ICR_RXDMT0 | ICR_RXO) != 0{
             info!("Receive Descriptor Minimum Threshold Reached or Receive Overrun");
 
-            retrieve_packets(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
+            //retrieve_packets(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
+            let mut packets = RECEIVED_BUFFER.lock();
+            retrieve_packets(&mut self.rx_ring, &self.registers, packets);
+            //more relaxed forms of ordering could lead to race conditions - i think
+            RX_NEW_DATA.store(true, Ordering::SeqCst);
 
         info!("Interrupt handled");
         }
@@ -84,7 +91,10 @@ impl InterruptHandler for E1000InterruptHandler{
             //data race technically handled by RXDMT0 and RXO, regular clearing of packets might be a good idea
             //pop a sinlgle packet from rx_desc_ring. or actually loop starting at the tail up to head-1
 
-            rx_ring_pop(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
+            //rx_ring_pop(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
+            let mut packets = RECEIVED_BUFFER.lock();
+            rx_ring_pop(&mut self.rx_ring, &self.registers, packets);
+            RX_NEW_DATA.store(true, Ordering::SeqCst);
 
         }
 
