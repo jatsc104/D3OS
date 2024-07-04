@@ -121,7 +121,7 @@ pub fn map_irq_to_vector(interrupt_line: InterruptLine, registers: E1000Register
     apic().allow(interrupt_vector);
 }
 
-pub fn enable_interrupts(&registers: E1000Registers) {
+pub fn enable_interrupts(registers: &E1000Registers) {
     const TXDW: u32 = 1 << 0;
     const TXQE: u32 = 1 << 1;
     const LSC: u32 = 1 << 2;
