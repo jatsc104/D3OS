@@ -11,7 +11,7 @@ use pci_types::{EndpointHeader, InterruptLine};
 use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
 use super::e1000_register::E1000Registers;
 use super::e1000_pci::{enable_device, get_e1000_device, get_interrupt_line, map_mmio_space};
-use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxDescriptor, E1000TxDescriptor};
+use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxDescriptor, E1000TxDescriptor, enable_receive};
 //use crate::alloc::rc::Rc;
 
 //these variables are necessary because of the lack of Arc
@@ -109,6 +109,7 @@ impl IntelE1000Device{
         map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, received_buffer);
         enable_interrupts(&registers);
         
+        enable_receive(&registers);
 
         IntelE1000Device{
             //interrupt_line,
