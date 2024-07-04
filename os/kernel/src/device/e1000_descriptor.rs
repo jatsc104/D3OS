@@ -42,6 +42,22 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     const RECEIVE_RING_SIZE: usize = 128; //maybe change later
     const BUFFER_SIZE: usize = 2048; //maybe change later, can be 256, 512, 1024, 2048, 4096, 8192, 16384 Bytes
 
+    //set buffer size to 2048 bytes
+    //should be default, but for the sake of completeness
+    const E1000_RCTL_BSIZE_2048: u32 = 11 << 16;
+    //enable broadcast accept mode - f.e. for ARP
+    const E1000_RCTL_BAM: u32 = 1 << 15;
+    //set receive descriptor minimum threshold size
+    const E1000_RCTL_RDTMS: u32 = 11 << 8;
+    //set loopback for testing - full duplex has to be enabled
+    const E1000_RCTL_LBM: u32 = 3 << 6;
+    let clear_mask = !(E1000_RCTL_BSIZE_2048 | E1000_RCTL_RDTMS);
+    //write ctrl register
+    let rctl = E1000Registers::read_rctl(registers);
+    let settings = (rctl & clear_mask) | E1000_RCTL_BAM;
+    E1000Registers::write_rctl(registers, settings);
+
+
     //allocate memory for receive descriptor ring
     //let mut receive_ring: Box<[E1000RxDescriptor]> = vec![E1000RxDescriptor::default(); RECEIVE_RING_SIZE].into_boxed_slice();
     //let mut receive_ring: ArrayVec<[E1000RxDescriptor; RECEIVE_RING_SIZE]> = ArrayVec::new();
@@ -89,6 +105,13 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
 
     receive_ring
 
+}
+
+pub fn enable_receive(registers: &E1000Registers){
+    const E1000_RCTL_EN: u32 = 1 << 1;
+    let rctl = E1000Registers::read_rctl(registers);
+    let enable = rctl | E1000_RCTL_EN;
+    E1000Registers::write_rctl(registers, enable);
 }
 
 //rewrite so it doesnt dealloc and alloc memory all the time, rather fill old memory with 0's and reuse it

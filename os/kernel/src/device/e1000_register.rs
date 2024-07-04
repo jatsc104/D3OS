@@ -193,6 +193,18 @@ impl E1000Registers{
         }
     }
 
+    pub fn read_rctl(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.rctl as *const u32)
+        }
+    }
+
+    pub fn write_rctl(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.rctl as *mut u32, value);
+        }
+    }
+
     pub fn write_ims(&self, value: u32){
         unsafe{
             core::ptr::write_volatile(self.ims as *mut u32, value);
