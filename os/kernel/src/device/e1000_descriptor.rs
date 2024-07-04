@@ -223,8 +223,11 @@ pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>
 pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, tx_buffer: &TxBuffer, registers: &E1000Registers){
     let packets = create_packets(tx_buffer);
 
-    const HEADER_SIZE: usize = 14; // ethernet header size
-    const MAX_DESCRIPTOR_SIZE: usize = 1500; //limited through ethernet frame size - jumbo frames with 9728 bytes should be supported as well
+    let header_size = get_header_size(tx_buffer);
+
+    //const HEADER_SIZE: usize = 14; // ethernet header size
+    const MAX_DESCRIPTOR_SIZE: usize = 4096;    //should not really matter, as long as jumbo frames are not supported, since MTU is 1500 bytes.
+                                                //this function should support jumbo frames, but create_packets does not
     const E1000_TXD_CMD_RS: u8 = 1 << 3;
     const E1000_TXD_CMD_EOP: u8 = 1 << 0;
 
@@ -241,7 +244,7 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
             //this would be a good spot to make room for other threads in a multithreaded environment
         }
         //assign header to seperate descriptor
-        let header = &packet[..HEADER_SIZE];
+        let header = &packet[..header_size];
         let descriptor = &mut tx_ring[tdt];
         descriptor.buffer_addr = header.as_ptr() as u64;
         descriptor.length = header.len() as u16;
@@ -251,8 +254,8 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
         //tdt = (tdt + 1) % tx_ring.len();
         E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
 
-        //assign the payload to one or more descriptors
-        let mut payload = &packet[HEADER_SIZE..];
+        //assign the payload to one or more descriptors - jumbo frames not supported so each packet should be smaller than 4096 bytes
+        let mut payload = &packet[header_size..];
         for chunk in payload.chunks(MAX_DESCRIPTOR_SIZE){
             //wait for room in the ring buffer
             while(tdt + 1)%tx_ring.len() == tdh{
@@ -275,56 +278,77 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
 
 pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
 
-    let protocol = &tx_buffer.protocol;
-
-    //IPv4 and TCP have variable header sizes
-    let header_size = match protocol{
-        NetworkProtocol::Ethernet => 14,
-        NetworkProtocol::Ipv4 => {
-            //IHL field is the lower 4 bits of the first byte
-            let ihl = tx_buffer.data[0] & 0x0F;
-            //IHL field is the number of 32 bit words, so multiply by 4 to get the number of bytes
-            ihl as usize * 4
-        },
-        NetworkProtocol::Ipv6 => 40,
-        NetworkProtocol::TCP => {
-            //Data offset field is the upper 4 bits of the 12th byte
-            let data_offset = tx_buffer.data[12] >> 4;
-            //Data offset field is the number of 32 bit words, so multiply by 4 to get the number of bytes
-            data_offset as usize * 4
-        },
-        NetworkProtocol::UDP => 8,
-    };
+    let header_size = get_header_size(tx_buffer);
 
     //placeholders - inject dest and src mac per parameter later
-    let destination_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
-    let source_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x57];
-    let ethertype: [u8; 2] = [0x08, 0x00]; //0x0800 is Ethertype for IPv4
+//    let destination_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
+//    let source_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x57];
+//    let ethertype: [u8; 2] = [0x08, 0x00]; //0x0800 is Ethertype for IPv4
     //combine into one header
-    let mut ethernet_header: Vec<u8>= Vec::new();
-    ethernet_header.extend_from_slice(&destination_mac);
-    ethernet_header.extend_from_slice(&source_mac);
-    ethernet_header.extend_from_slice(&ethertype);
+    let mut header = &tx_buffer.data[..header_size]; 
 
-    const MAX_PACKET_SIZE: usize = 1500; //limited through ethernet frame size - jumbo frames with 9728 bytes should be supported as well
+    //MTU = Maximum Transmission Unit - Maximum size of a packet including header
+    const MTU: usize = 1500; //limited through ethernet frame size - jumbo frames with 9728 bytes should be supported as well
 
 
     let mut packets = Vec::new();
-    for chunk in tx_buffer.data.chunks(MAX_PACKET_SIZE){
+    //header gets put into the same packet as the payload here, but gets assigned to a seperate descriptor in tx_connect_buffer_to_descriptors
+    //this ensures each header to have the same lifetime as the payload, as they live in the same Vec
+    for chunk in tx_buffer.data.chunks(MTU){
         let mut packet = Vec::new();
         //Add Header
-        packet.extend_from_slice(&ethernet_header);
+        packet.extend_from_slice(&header);
         //Add Payload
         packet.extend_from_slice(chunk);
 //TODO: HEADER GETS RESIZED RIGHT NOW AS WELL - FIX THIS ASAP - resolved?
         //Pad last/header packet to Max size so all packets are same size - helps with debugging
-        if packet.len() < MAX_PACKET_SIZE{
+        if packet.len() < MTU{
             //packet.extend_from_slice(&[0; MAX_PACKET_SIZE - chunk.len()]); - needs to know chunk.len() at compile time
-            packet.resize(MAX_PACKET_SIZE, 0);
+            packet.resize(MTU, 0);
         }
         packets.push(packet);
     }
     packets
+}
+
+pub fn get_header_size(tx_buffer: &TxBuffer) -> usize {
+    const ETHERNET_HEADER_SIZE: usize = 14;
+    const IPV6_HEADER_SIZE: usize = 40;
+    const UDP_HEADER_SIZE: usize = 8;
+
+    let protocol = &tx_buffer.protocol;
+
+    //IPv4 and TCP have variable header sizes
+    match protocol{
+        NetworkProtocol::Ethernet => ETHERNET_HEADER_SIZE,
+        NetworkProtocol::Ipv4 => {
+            //IHL field is the lower 4 bits of the first byte
+            let ihl = tx_buffer.data[0] & 0x0F;
+            //IHL field is the number of 32 bit words, so multiply by 4 to get the number of bytes
+            (ihl as usize * 4) + ETHERNET_HEADER_SIZE
+        },
+        NetworkProtocol::Ipv6 => IPV6_HEADER_SIZE + ETHERNET_HEADER_SIZE,
+        NetworkProtocol::TcpIpv4 => {
+            let ihl = tx_buffer.data[ETHERNET_HEADER_SIZE] & 0x0F;
+            let ip_header_size = ihl as usize * 4;
+            //Data offset field is the upper 4 bits of the 12th byte
+            let data_offset = tx_buffer.data[ETHERNET_HEADER_SIZE + ip_header_size + 12] >> 4;
+            //Data offset field is the number of 32 bit words, so multiply by 4 to get the number of bytes
+            let tcp_header_size = data_offset as usize * 4;
+            ETHERNET_HEADER_SIZE + ip_header_size + tcp_header_size
+        },
+        NetworkProtocol::UdpIpv4 => {
+            let ihl = tx_buffer.data[ETHERNET_HEADER_SIZE] & 0x0F;
+            let ip_header_size = ihl as usize * 4;
+            ETHERNET_HEADER_SIZE + ip_header_size + UDP_HEADER_SIZE
+        },
+        NetworkProtocol::TcpIpv6 => {
+            let data_offset = tx_buffer.data[ETHERNET_HEADER_SIZE + IPV6_HEADER_SIZE + 12] >> 4;
+            let tcp_header_size = data_offset as usize * 4;
+            ETHERNET_HEADER_SIZE + IPV6_HEADER_SIZE + tcp_header_size
+        },
+        NetworkProtocol::UdpIpv6 => UDP_HEADER_SIZE + IPV6_HEADER_SIZE + ETHERNET_HEADER_SIZE,
+    }
 }
 
 pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, mut packets: MutexGuard<Vec<Vec<u8>>>){

@@ -11,11 +11,14 @@ pub struct E1000Interface{
 }
 
 pub enum NetworkProtocol{
+    //protocols imply the following order of tx_buffer data: ethernet header -> ip header -> tcp/udp header -> payload
     Ethernet,
     Ipv4,
     Ipv6,
-    TCP,
-    UDP,
+    TcpIpv4,
+    UdpIpv4,
+    TcpIpv6,
+    UdpIpv6,
 }
 impl Clone for NetworkProtocol{
     fn clone(&self) -> Self {
@@ -23,14 +26,18 @@ impl Clone for NetworkProtocol{
             NetworkProtocol::Ethernet => NetworkProtocol::Ethernet,
             NetworkProtocol::Ipv4 => NetworkProtocol::Ipv4,
             NetworkProtocol::Ipv6 => NetworkProtocol::Ipv6,
-            NetworkProtocol::TCP => NetworkProtocol::TCP,
-            NetworkProtocol::UDP => NetworkProtocol::UDP,
+            NetworkProtocol::TcpIpv4 => NetworkProtocol::TcpIpv4,
+            NetworkProtocol::UdpIpv4 => NetworkProtocol::UdpIpv4,
+            NetworkProtocol::TcpIpv6 => NetworkProtocol::TcpIpv6,
+            NetworkProtocol::UdpIpv6 => NetworkProtocol::UdpIpv6,
         }
     }
 }
 
 
 pub fn transmit(data: Vec<u8>, protocol: NetworkProtocol, device: &mut IntelE1000Device) {
+    //caller has to ensure that the data + the corresponding headers is not larger than the MTU = 1500 bytes
+    //but if it is, data gets divided into multiple packets by the driver anyways
 
     let tx_buffer = TxBuffer::new(data, protocol);
     tx_conncect_buffer_to_descriptors(&mut device.tx_desc_ring, &tx_buffer, &device.registers)
