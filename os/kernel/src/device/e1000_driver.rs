@@ -57,11 +57,13 @@ impl RxBufferVecToPtr{
 }
 
 pub struct IntelE1000Device{
-    pub interrupt_line: InterruptLine,
+    //maybe that name isnt that fitting anymore, since i only have two of five fields belonging to the card left
+    //pub interrupt_line: InterruptLine,
     pub registers: E1000Registers,
     //pub received_buffer: Vec<Vec<u8>>,
     //pub rx_desc_ring: Vec<E1000RxDescriptor>,
-    tx_desc_ring: Vec<E1000TxDescriptor>,
+    pub tx_desc_ring: Vec<E1000TxDescriptor>,
+    pub mac_address: [u8; 6],
 }
 
 impl IntelE1000Device{
@@ -88,6 +90,9 @@ impl IntelE1000Device{
         //set up descriptor rings
         let rx_desc_ring = set_up_rx_desc_ring(&registers);
         let tx_desc_ring = set_up_tx_desc_ring(&registers);
+
+        //get mac address
+        let mac_address = registers.read_mac_address();
         
         //allocate memory for received_buffer
         let received_buffer = Vec::new();
@@ -104,11 +109,12 @@ impl IntelE1000Device{
         map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, received_buffer);
 
         IntelE1000Device{
-            interrupt_line,
+            //interrupt_line,
             registers,
             //received_buffer: received_buffer,
             //rx_desc_ring,
             tx_desc_ring,
+            mac_address,
         }
         
 

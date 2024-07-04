@@ -151,6 +151,45 @@ impl E1000Registers{
 
     }
 
+    pub fn read_mac_address(&self) -> [u8;6] {
+        let mut mac_address = [0u8;6];
+        //mac address is stored in the first three 16 bit words of the eeprom
+        for i in 0..3{
+            let word = self.read_eeprom((0x0 + i)as u8);
+            mac_address[i*2] = (word & 0xFF) as u8;
+            mac_address[i*2 + 1] = (word >> 8) as u8;
+        }
+        mac_address
+    }
+
+    pub fn read_eeprom(&self, address: u8) -> u16 {
+        // Write the address to the EERD register and start the read operation
+        self.write_eerd((address as u32) << 8 | 0x1);
+    
+        // Wait for the read operation to complete
+        //if run on real hardware, think about giving the card a short break before reading after write if it crashes
+        while self.read_eerd() & 0x10 == 0 {
+        }
+    
+        // Read the data from the EERD register
+        let data = self.read_eerd();
+    
+        // The data is in the upper 16 bits of the EERD register, so shift it down
+        (data >> 16) as u16
+    }
+
+    pub fn read_eerd(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.eerd as *const u32)
+        }
+    }
+
+    pub fn write_eerd(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.eerd as *mut u32, value);
+        }
+    }
+
     //not sure wether deref pointers in struct would be better, but this is more explicit
     pub fn read_ctrl(&self) -> u32{
         unsafe{

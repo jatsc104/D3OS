@@ -1,5 +1,6 @@
 use alloc::{rc::Rc, vec::Vec};
 use log::info;
+use uefi_raw::protocol;
 use core::mem::MaybeUninit;
 use spin::MutexGuard;
 
@@ -8,6 +9,7 @@ use x86_64::registers;
 use crate::device::pit::Timer;
 
 use super::e1000_register::E1000Registers;//::{write_rdbah, write_rdbal, write_rdlen, write_rdh, write_rdt};
+use super::e1000_interface::NetworkProtocol;
 
 // Define the transmit descriptor
 #[repr(C)]
@@ -160,11 +162,12 @@ pub struct TxBuffer{
     //alignment on arbitrary byte size
     //maximum packet size is 16288 bytes
     data: Vec<u8>,
+    protocol: NetworkProtocol,
 }
 
 impl TxBuffer{
-    pub fn new(data: Vec<u8>) -> Self{
-        Self{data}
+    pub fn new(data: Vec<u8>, protocol: NetworkProtocol) -> Self{
+        Self{data, protocol}
     }
 
     pub fn size(&self) -> u16{
@@ -173,6 +176,10 @@ impl TxBuffer{
 
     pub fn address(&self) -> u64{
         self.data.as_ptr() as u64
+    }
+    
+    pub fn protocol(&self) -> NetworkProtocol{
+        self.protocol.clone()
     }
 }
 
@@ -212,7 +219,8 @@ pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>
 
 
 //passing tx:ring as slice bc is more flexible
-pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut [E1000TxDescriptor], tx_buffer: &TxBuffer, registers: &E1000Registers){
+//passing tx_ring as Vec so i can calculate here which part to access, i also need tx_ring.len() for the wrap around calculation
+pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, tx_buffer: &TxBuffer, registers: &E1000Registers){
     let packets = create_packets(tx_buffer);
 
     const HEADER_SIZE: usize = 14; // ethernet header size
@@ -223,13 +231,14 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut [E1000TxDescriptor], tx_b
     //are these variables faster than using the registers directly? - i suppose, but do not know
     let tdt = E1000Registers::read_tdt(registers) as usize;
     let mut tdh = E1000Registers::read_tdh(registers) as usize;
+    let tx_ring_len = tx_ring.len();
     for packet in packets{
         //wait for room in the ring buffer
         //wrap around necessary since tdt could be at the end of the ring buffer
-        while(tdt + 1)%tx_ring.len() == tdh{
+        while(tdt + 1)%tx_ring_len == tdh{
             //update tdh - card has responsibility to update tdh
             tdh = E1000Registers::read_tdh(registers) as usize;
-            //this would be a good spot to make room for other threads in a multithreaded environment, i can wait for a maybe up to 1ms
+            //this would be a good spot to make room for other threads in a multithreaded environment
         }
         //assign header to seperate descriptor
         let header = &packet[..HEADER_SIZE];
@@ -260,11 +269,33 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut [E1000TxDescriptor], tx_b
             E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
         }
         //old tdt is set to EOP
-        tx_ring[(tdt)%tx_ring.len()].cmd |= E1000_TXD_CMD_EOP;
+        tx_ring[(tdt)%tx_ring_len].cmd |= E1000_TXD_CMD_EOP;
     }
 }
 
 pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
+
+    let protocol = &tx_buffer.protocol;
+
+    //IPv4 and TCP have variable header sizes
+    let header_size = match protocol{
+        NetworkProtocol::Ethernet => 14,
+        NetworkProtocol::Ipv4 => {
+            //IHL field is the lower 4 bits of the first byte
+            let ihl = tx_buffer.data[0] & 0x0F;
+            //IHL field is the number of 32 bit words, so multiply by 4 to get the number of bytes
+            ihl as usize * 4
+        },
+        NetworkProtocol::Ipv6 => 40,
+        NetworkProtocol::TCP => {
+            //Data offset field is the upper 4 bits of the 12th byte
+            let data_offset = tx_buffer.data[12] >> 4;
+            //Data offset field is the number of 32 bit words, so multiply by 4 to get the number of bytes
+            data_offset as usize * 4
+        },
+        NetworkProtocol::UDP => 8,
+    };
+
     //placeholders - inject dest and src mac per parameter later
     let destination_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
     let source_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x57];
