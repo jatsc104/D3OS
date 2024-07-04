@@ -232,7 +232,7 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
     const E1000_TXD_CMD_EOP: u8 = 1 << 0;
 
     //are these variables faster than using the registers directly? - i suppose, but do not know
-    let tdt = E1000Registers::read_tdt(registers) as usize;
+    let mut tdt = E1000Registers::read_tdt(registers) as usize;
     let mut tdh = E1000Registers::read_tdh(registers) as usize;
     let tx_ring_len = tx_ring.len();
     for packet in packets{
@@ -256,23 +256,30 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
 
         //assign the payload to one or more descriptors - jumbo frames not supported so each packet should be smaller than 4096 bytes
         let mut payload = &packet[header_size..];
-        for chunk in payload.chunks(MAX_DESCRIPTOR_SIZE){
+        //calculate number of chunks rounding up
+        let num_chunks = (payload.len() + MAX_DESCRIPTOR_SIZE - 1) / MAX_DESCRIPTOR_SIZE;
+        for (i, chunk) in payload.chunks(MAX_DESCRIPTOR_SIZE).enumerate(){
+            //update tdt
+            tdt = E1000Registers::read_tdt(registers) as usize;
             //wait for room in the ring buffer
-            while(tdt + 1)%tx_ring.len() == tdh{
+            while tdt == tdh{
             //update tdh - card has responsibility to update tdh
             tdh = E1000Registers::read_tdh(registers) as usize;
-        }
+            }
             let descriptor = &mut tx_ring[tdt];
             descriptor.buffer_addr = chunk.as_ptr() as u64;
             descriptor.length = chunk.len() as u16;
             descriptor.cmd = E1000_TXD_CMD_RS;
             descriptor.status = 0;
+            if i == num_chunks - 1 {
+                descriptor.cmd |= E1000_TXD_CMD_EOP;
+            }
             //update tdt
             //tdt = (tdt + 1) % tx_ring.len();
             E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
         }
         //old tdt is set to EOP
-        tx_ring[(tdt)%tx_ring_len].cmd |= E1000_TXD_CMD_EOP;
+        //tx_ring[(tdt)%tx_ring_len].cmd |= E1000_TXD_CMD_EOP;
     }
 }
 
