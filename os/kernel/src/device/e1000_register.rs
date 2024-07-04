@@ -36,6 +36,7 @@ pub struct E1000Registers{
 
     //interrupt related registers
     icr:u64,    //interrupt cause read register
+    ims:u64,    //interrupt mask set/read register
 }
 
 impl Clone for E1000Registers {
@@ -62,6 +63,7 @@ impl Clone for E1000Registers {
             rdh: self.rdh,
             rdt: self.rdt,
             icr: self.icr,
+            ims: self.ims,
         }
     }
 
@@ -102,6 +104,7 @@ impl E1000Registers{
 
             //interrupt related registers
             icr: mmio_address_u64 + 0x00C0,
+            ims: mmio_address_u64 + 0x0D0,
         }
     }
 
@@ -187,6 +190,18 @@ impl E1000Registers{
     pub fn write_eerd(&self, value: u32){
         unsafe{
             core::ptr::write_volatile(self.eerd as *mut u32, value);
+        }
+    }
+
+    pub fn write_ims(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.ims as *mut u32, value);
+        }
+    }
+
+    pub fn read_ims(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.ims as *const u32)
         }
     }
 

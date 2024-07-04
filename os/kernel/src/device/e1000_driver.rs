@@ -8,7 +8,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use crate::device::pit::Timer;
 use crate::pci_bus;
 use pci_types::{EndpointHeader, InterruptLine};
-use super::e1000_interrupt::map_irq_to_vector;
+use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
 use super::e1000_register::E1000Registers;
 use super::e1000_pci::{enable_device, get_e1000_device, get_interrupt_line, map_mmio_space};
 use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxDescriptor, E1000TxDescriptor};
@@ -107,6 +107,8 @@ impl IntelE1000Device{
         
         //also registers interrupt handler and configures apic
         map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, received_buffer);
+        enable_interrupts(&registers);
+        
 
         IntelE1000Device{
             //interrupt_line,

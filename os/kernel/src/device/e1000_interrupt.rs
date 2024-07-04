@@ -120,3 +120,34 @@ pub fn map_irq_to_vector(interrupt_line: InterruptLine, registers: E1000Register
     interrupt_dispatcher().assign(interrupt_vector, handler);
     apic().allow(interrupt_vector);
 }
+
+pub fn enable_interrupts(&registers: E1000Registers) {
+    const TXDW: u32 = 1 << 0;
+    const TXQE: u32 = 1 << 1;
+    const LSC: u32 = 1 << 2;
+    //RXSEQ: Receive Sequence Error
+    const RXDMT0: u32 = 1 << 4;
+    const RXO: u32 = 1 << 6;
+    const RXT0: u32 = 1 << 7;
+    const MDAC: u32 = 1 << 9;
+    const PHYINT: u32 = 1 << 12;
+    const GPI1: u32 = 1 << 13;
+    const GPI2: u32 = 1 << 14;
+    const TXD_LOW: u32 = 1 << 15;
+    const SRPD: u32 = 1 << 16;
+
+    let interrupts_to_enable =  TXDW
+                                | TXQE
+                                | LSC
+                                | RXDMT0
+                                | RXO
+                                | RXT0
+                                | MDAC
+                                | PHYINT
+                                | GPI1
+                                | GPI2
+                                | TXD_LOW
+                                | SRPD;
+    
+    registers.write_ims(interrupts_to_enable);
+}
