@@ -332,10 +332,10 @@ pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
         packet.extend_from_slice(chunk);
 //TODO: HEADER GETS RESIZED RIGHT NOW AS WELL - FIX THIS ASAP - resolved?
         //Pad last/header packet to Max size so all packets are same size - helps with debugging
-        if packet.len() < MTU{
+//        if packet.len() < MTU{
             //packet.extend_from_slice(&[0; MAX_PACKET_SIZE - chunk.len()]); - needs to know chunk.len() at compile time
-            packet.resize(MTU, 0);
-        }
+//            packet.resize(MTU, 0);
+//        }
         packets.push(packet);
     }
     packets
