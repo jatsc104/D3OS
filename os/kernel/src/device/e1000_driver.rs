@@ -1,13 +1,13 @@
-use acpi::platform::interrupt;
+//use acpi::platform::interrupt;
 use alloc::vec::Vec;
 use log::info;
 use spin::Mutex;
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::AtomicBool;
 
 use crate::device::pit::Timer;
 use crate::pci_bus;
-use pci_types::{EndpointHeader, InterruptLine};
+//use pci_types::{EndpointHeader, InterruptLine};
 use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
 use super::e1000_register::E1000Registers;
 use super::e1000_pci::{enable_device, get_e1000_device, get_interrupt_line, map_mmio_space};

@@ -2,14 +2,13 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use log::info;
 use pci_types::InterruptLine;
-use x86_64::registers;
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::device::e1000_descriptor::{retrieve_packets, rx_ring_pop, E1000RxDescriptor};
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::interrupt::interrupt_dispatcher::{InterruptVector};
-use crate::{apic, interrupt, interrupt_dispatcher};
+use crate::{apic, interrupt_dispatcher};
 use crate::device::e1000_register::E1000Registers;
 use crate::device::e1000_driver::{IntelE1000Device, RxBufferVecToPtr, RxRingVecToPtr};
 use crate::device::e1000_driver::{RX_NEW_DATA, RECEIVED_BUFFER};
@@ -78,7 +77,7 @@ impl InterruptHandler for E1000InterruptHandler{
             info!("Receive Descriptor Minimum Threshold Reached or Receive Overrun");
 
             //retrieve_packets(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
-            let mut packets = RECEIVED_BUFFER.lock();
+            let packets = RECEIVED_BUFFER.lock();
             retrieve_packets(&mut self.rx_ring, &self.registers, packets);
             //more relaxed forms of ordering could lead to race conditions - i think
             RX_NEW_DATA.store(true, Ordering::SeqCst);

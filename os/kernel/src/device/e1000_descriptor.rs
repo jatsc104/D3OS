@@ -1,6 +1,5 @@
-use alloc::{rc::Rc, vec::Vec};
+use alloc::vec::Vec;
 use log::info;
-use uefi_raw::protocol;
 use core::mem::MaybeUninit;
 use spin::MutexGuard;
 
@@ -293,7 +292,7 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
         E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
 
         //assign the payload to one or more descriptors - jumbo frames not supported so each packet should be smaller than 4096 bytes
-        let mut payload = &packet[header_size..];
+        let payload = &packet[header_size..];
         //calculate number of chunks rounding up
         let num_chunks = (payload.len() + MAX_DESCRIPTOR_SIZE - 1) / MAX_DESCRIPTOR_SIZE;
         for (i, chunk) in payload.chunks(MAX_DESCRIPTOR_SIZE).enumerate(){

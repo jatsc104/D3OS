@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-use core::ops::BitOr;
+//use core::ops::BitOr;
 //do i actually need this?
 use crate::{device::pci::PciBus, memory::PAGE_SIZE, process_manager};
 use log::info;
-use pci_types::{Bar, BaseClass, CommandRegister, EndpointHeader, SubClass, InterruptLine};
+use pci_types::{Bar, CommandRegister, EndpointHeader, InterruptLine};
 use x86_64::{structures::paging::{page::PageRange, Page, PageTableFlags}, VirtAddr};
 //use crate::device::pci::ConfigRegionAccess;
 
@@ -26,7 +26,7 @@ pub fn get_e1000_device(pci_bus: &PciBus)->&EndpointHeader{
     if e1000_devices.len() == 0 {
         panic!("No e1000 device found");
     }
-    else if(e1000_devices.len() > 1){
+    else if e1000_devices.len() > 1{
         panic!("Multiple e1000 devices found");
     }
     else{
