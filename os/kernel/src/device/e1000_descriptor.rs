@@ -211,6 +211,15 @@ impl TxBuffer{
 pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>{
 //NOT READY YET; FIX INITIALISING
     const NUM_DESCRIPTORS: usize = 64;
+
+    const E1000_TCTL_PSP: u32 = 1 << 3;     // Pad short packets
+    const E1000_TCTL_CT: u32 = 0x0F << 4;  // Collision threshold - only has meaning in half duplex
+    const E1000_TCTL_COLD_FD: u32 = 0x40 << 12;// Collision distance Full Duplex - recommended 0x40
+    const E1000_TCTL_COLD_HD: u32 = 0x200 << 12;// Collision distance Half Duplex - recommended 0x200
+
+    let tctl = E1000Registers::read_tctl(registers);
+    let settings = tctl | E1000_TCTL_PSP | E1000_TCTL_CT | E1000_TCTL_COLD_FD;
+    E1000Registers::write_tctl(registers, settings);
     // Allocate memory for the descriptors.
     let mut descriptors: Vec<E1000TxDescriptor> = Vec::with_capacity(NUM_DESCRIPTORS);
 
@@ -238,6 +247,12 @@ pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>
     E1000Registers::write_tdt(registers, NUM_DESCRIPTORS as u32 - 1);
 
     descriptors
+}
+
+pub fn enable_transmit(registers: &E1000Registers){
+    const E1000_TCTL_EN: u32 = 1 << 1;
+    let tctl = E1000Registers::read_tctl(registers);
+    E1000Registers::write_tctl(registers, tctl | E1000_TCTL_EN);
 }
 
 
