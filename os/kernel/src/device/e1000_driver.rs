@@ -1,9 +1,10 @@
 //use acpi::platform::interrupt;
 use alloc::vec::Vec;
 use log::info;
-use spin::Mutex;
+//use spin::Mutex;
+use nolock::queues::spsc::unbounded;
 
-use core::sync::atomic::AtomicBool;
+//use core::sync::atomic::AtomicBool;
 
 use crate::device::pit::Timer;
 use crate::pci_bus;
@@ -17,8 +18,8 @@ use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxD
 //these variables are necessary because of the lack of Arc
 //it can be argued that these global variables are "okay" because both need to exist for the entire lifetime of the driver, which is likely the lifetime of the whole system
 //putting them in a data structure like IntelE1000Device sadly does not work, since i also need two mutable refenerences to each of them - producer and consumer
-pub static RX_NEW_DATA: AtomicBool = AtomicBool::new(false);
-pub static RECEIVED_BUFFER: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
+//pub static RX_NEW_DATA: AtomicBool = AtomicBool::new(false);
+//pub static RECEIVED_BUFFER: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
 
 
 pub struct RxRingVecToPtr{
@@ -64,6 +65,7 @@ pub struct IntelE1000Device{
     //pub rx_desc_ring: Vec<E1000RxDescriptor>,
     pub tx_desc_ring: Vec<E1000TxDescriptor>,
     pub mac_address: [u8; 6],
+    pub rx_buffer_consumer: unbounded::UnboundedReceiver<Vec<u8>>,
 }
 
 impl IntelE1000Device{
@@ -95,18 +97,18 @@ impl IntelE1000Device{
         let mac_address = registers.read_mac_address();
         
         //allocate memory for received_buffer
-        let received_buffer = Vec::new();
+        let (mut rx_buffer_consumer, mut rx_buffer_producer) = unbounded::queue();
+        //let received_buffer = Vec::new();
 
         //if possible, change the following using Rc or Arc - data has to be mutable, that is the problem
         //since this data is assigned to the interrupthandler, it should not get dropped
         //right now, prevent double instances of mut pointers to rx_ring and rx_buffer by only having them in the interrupt handler - hopefully this will suffice
         //else, think about injecting these into map_irq_to_vector
-        //talk to fabian about this
-        let rx_ring_ptr = RxRingVecToPtr::new(&rx_desc_ring);
+        //let rx_ring_ptr = RxRingVecToPtr::new(&rx_desc_ring);
         //let rx_buffer_ptr = RxBufferVecToPtr::new(&received_buffer);
         
         //also registers interrupt handler and configures apic
-        map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, received_buffer);
+        map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, rx_buffer_producer);
         enable_interrupts(&registers);
         
         //enable receive and transmit units
@@ -120,6 +122,7 @@ impl IntelE1000Device{
             //rx_desc_ring,
             tx_desc_ring,
             mac_address,
+            rx_buffer_consumer,
         }
         
 

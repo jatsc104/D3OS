@@ -1,7 +1,8 @@
 use alloc::vec::Vec;
 use log::info;
 use core::mem::MaybeUninit;
-use spin::MutexGuard;
+//use spin::MutexGuard;
+use nolock::queues::spsc::unbounded;
 
 use alloc::boxed::Box;
 use x86_64::registers;
@@ -395,7 +396,7 @@ pub fn get_header_size(tx_buffer: &TxBuffer) -> usize {
     }
 }
 
-pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, mut packets: MutexGuard<Vec<Vec<u8>>>){
+pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, rx_buffer_producer: &mut unbounded::UnboundedSender<Vec<u8>>){
     //packets should be owned by the caller to avoid transfering ownership upwards the calling hierarchy
     //packets and registers not thread safe
     const E1000_RX_STATUS_DD: u8 = 1 << 0;
@@ -426,7 +427,8 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
             //add potential packet filter here
 
             //add packet to provided Vector
-            packets.push(packet_data.to_vec());
+            //packets.push(packet_data.to_vec());
+            rx_buffer_producer.enqueue(packet_data.to_vec());
             //calling function still needs to sort packets between multiple programs - is that my responisbilty or the network stacks? - should be done by transport layer
 
             //reset status 
@@ -438,7 +440,7 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
     }
 }
 
-pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, mut packets:  MutexGuard<Vec<Vec<u8>>>){
+pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, rx_buffer_producer: &mut unbounded::UnboundedSender<Vec<u8>>){
     let rdh = E1000Registers::read_rdh(registers);
     let rdt = E1000Registers::read_rdt(registers);
     
@@ -465,7 +467,8 @@ pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000R
             //add potential packet filter here
 
             //add packet to provided Vector
-            packets.push(packet_data.to_vec());
+            //packets.push(packet_data.to_vec());
+            rx_buffer_producer.enqueue(packet_data.to_vec());
 
             //advance rdt
             E1000Registers::write_rdt(registers, (rdt + 1) % receive_ring.len() as u32);
