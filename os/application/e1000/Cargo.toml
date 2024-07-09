@@ -1,0 +1,15 @@
+cargo-features = ["edition2024"]
+
+[package]
+name = "e1000"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/e1000.rs"
+
+[dependencies]
+# Local dependencies
+runtime = {path = "../../library/runtime" }
+io = {path = "../../library/io" }

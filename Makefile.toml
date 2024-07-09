@@ -57,7 +57,7 @@ args = [ "-p", "${INITRD_DIRECTORY}" ]
 [tasks.initrd]
 cwd = "${INITRD_DIRECTORY}"
 command = "tar"
-args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date" ]
+args = [ "-cf", "${BOOTLOADER_DIRECTORY}/initrd.tar", "hello", "shell", "uptime", "date" , "e1000"]
 dependencies = [ "link-members" ]
 
 [tasks.initrd.mac]
