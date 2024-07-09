@@ -302,3 +302,7 @@ pub fn ps2_devices() -> &'static PS2 {
 pub fn pci_bus() -> &'static PciBus {
     PCI.get().expect("Trying to access PCI bus before initialization!")
 }
+
+pub fn e1000_device() -> &'static IntelE1000Device{
+    E1000.get().expect("Trying to access e1000 device before initialization!")
+}
