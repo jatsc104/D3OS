@@ -6,7 +6,6 @@ use nolock::queues::spsc::unbounded;
 
 use alloc::boxed::Box;
 use x86_64::registers;
-use crate::device::pit::Timer;
 
 use super::e1000_register::E1000Registers;//::{write_rdbah, write_rdbal, write_rdlen, write_rdh, write_rdt};
 use super::e1000_interface::NetworkProtocol;
@@ -101,7 +100,6 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     info!("Receive descriptor ring set up");
     info!("Receive descriptor ring address: {:?}", ring_addr);
     info!("RDT - Test: {:?}", E1000Registers::read_rdt(registers));
-    Timer::wait(4000);
 
     receive_ring
 

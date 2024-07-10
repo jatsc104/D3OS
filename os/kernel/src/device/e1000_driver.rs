@@ -6,7 +6,6 @@ use nolock::queues::spsc::unbounded;
 
 //use core::sync::atomic::AtomicBool;
 
-use crate::device::pit::Timer;
 use crate::pci_bus;
 //use pci_types::{EndpointHeader, InterruptLine};
 use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
@@ -78,12 +77,10 @@ impl IntelE1000Device{
     //TODO: do rest of interrupt later
         let interrupt_line = get_interrupt_line(pci_bus, e1000_device);
         info!("Interrupt line: {}", interrupt_line);
-        Timer::wait(1000);
         
         //need mmio(base)_adress for controller (register access)
         let mmio_adress = map_mmio_space(pci_bus, e1000_device);
         info!("MMIO address: {:?}", mmio_adress.as_u64());
-        Timer::wait(1000);
         //let controller...
         let registers = E1000Registers::new(mmio_adress);
         registers.init_config_e1000();
