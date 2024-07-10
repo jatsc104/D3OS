@@ -53,7 +53,7 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     let clear_mask = !(E1000_RCTL_BSIZE_2048 | E1000_RCTL_RDTMS);
     //write ctrl register
     let rctl = E1000Registers::read_rctl(registers);
-    let settings = (rctl & clear_mask) | E1000_RCTL_BAM;
+    let settings = (rctl & clear_mask) | E1000_RCTL_BAM | E1000_RCTL_LBM;
     E1000Registers::write_rctl(registers, settings);
 
 
