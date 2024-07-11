@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use log::info;
 use core::mem::MaybeUninit;
 use spin::Mutex;
-use nolock::queues::spsc::unbounded;
+use nolock::queues::mpmc::bounded;
 
 use alloc::boxed::Box;
 use x86_64::registers;
@@ -32,6 +32,11 @@ pub struct E1000RxDescriptor {
     status: u8,
     errors: u8,
     special: u16,
+}
+
+pub struct RxBufferPacket{
+    pub length: usize,
+    pub data: [u8; 1500],
 }
 
 pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>{
@@ -179,6 +184,20 @@ impl Default for E1000RxDescriptor {
     }
 }
 
+impl Default for E1000TxDescriptor {
+    fn default() -> Self {
+        E1000TxDescriptor {
+            buffer_addr: 0,
+            length: 0,
+            cso: 0,
+            cmd: 0,
+            status: 0,
+            css: 0,
+            special: 0,
+        }
+    }
+}
+
 pub struct TxBuffer{
     //check alignment rules in intel Doc;
     //alignment on arbitrary byte size
@@ -206,7 +225,7 @@ impl TxBuffer{
 }
 
 
-
+///initialises a given transmit descriptor ring with size TX_NUM_DESCRIPTORS
 pub fn set_up_tx_desc_ring(registers: &E1000Registers, tx_ring: &'static Mutex<Option<Vec<E1000TxDescriptor>>>) {
 //NOT READY YET; FIX INITIALISING
     //const TX_NUM_DESCRIPTORS: usize = 64;
@@ -410,7 +429,7 @@ pub fn get_header_size(tx_buffer: &TxBuffer) -> usize {
     }
 }
 
-pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, rx_buffer_producer: &mut unbounded::UnboundedSender<Vec<u8>>){
+pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, rx_buffer_producer: &bounded::scq::Sender<RxBufferPacket>){
     //packets should be owned by the caller to avoid transfering ownership upwards the calling hierarchy
     //packets and registers not thread safe
     const E1000_RX_STATUS_DD: u8 = 1 << 0;
@@ -442,7 +461,8 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
 
             //add packet to provided Vector
             //packets.push(packet_data.to_vec());
-            rx_buffer_producer.enqueue(packet_data.to_vec());
+            //rx_buffer_producer.enqueue(packet_data.to_vec());
+            enqueue_packet(rx_buffer_producer, packet_data);
             //calling function still needs to sort packets between multiple programs - is that my responisbilty or the network stacks? - should be done by transport layer
 
             //reset status 
@@ -454,7 +474,23 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
     }
 }
 
-pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, rx_buffer_producer: &mut unbounded::UnboundedSender<Vec<u8>>){
+fn enqueue_packet(rx_buffer_producer: &bounded::scq::Sender<RxBufferPacket>, packet_data: &[u8]){
+    //using the struct with a fixed size to avoid needing to serialise the data.
+    let mut packet = RxBufferPacket{
+        length: packet_data.len(),
+        data: [0; 1500],
+    };
+    packet.data[..packet_data.len()].copy_from_slice(packet_data);
+    //dont call expect here, since it would panic if the buffer is full
+    rx_buffer_producer.try_enqueue(packet).unwrap_or_else(|_| {
+        info!("Recieved Packet could not be enqueued - Buffer probably full");
+    });
+}
+
+    
+
+
+pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, rx_buffer_producer: &bounded::scq::Sender<RxBufferPacket>){
     let rdh = E1000Registers::read_rdh(registers);
     let rdt = E1000Registers::read_rdt(registers);
     
@@ -482,7 +518,8 @@ pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000R
 
             //add packet to provided Vector
             //packets.push(packet_data.to_vec());
-            rx_buffer_producer.enqueue(packet_data.to_vec());
+            //rx_buffer_producer.enqueue(packet_data.to_vec());
+            enqueue_packet(rx_buffer_producer, packet_data);
 
             //advance rdt
             E1000Registers::write_rdt(registers, (rdt + 1) % receive_ring.len() as u32);
