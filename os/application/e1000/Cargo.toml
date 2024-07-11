@@ -13,3 +13,4 @@ path = "src/e1000.rs"
 # Local dependencies
 runtime = {path = "../../library/runtime" }
 io = {path = "../../library/io" }
+syscall = {path = "../../library/syscall" }
