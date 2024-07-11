@@ -2,10 +2,11 @@
 use alloc::vec::Vec;
 use log::info;
 use spin::Mutex;
-use nolock::queues::spsc::unbounded;
+use nolock::queues::mpmc::bounded;
 
 //use core::sync::atomic::AtomicBool;
 
+use crate::device::e1000_descriptor::RxBufferPacket;
 use crate::pci_bus;
 //use pci_types::{EndpointHeader, InterruptLine};
 use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
@@ -21,6 +22,7 @@ use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxD
 //pub static RECEIVED_BUFFER: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
 
 pub const TX_NUM_DESCRIPTORS: usize = 64;
+pub const RX_NUM_DESCRIPTORS: usize = 128;
 
 static TX_RING: Mutex<Option<Vec<E1000TxDescriptor>>> = Mutex::new(None);
 pub fn get_tx_ring() -> &'static Mutex<Option<Vec<E1000TxDescriptor>>>{
@@ -71,7 +73,7 @@ pub struct IntelE1000Device{
     //pub rx_desc_ring: Vec<E1000RxDescriptor>,
     //pub tx_desc_ring: Vec<E1000TxDescriptor>,
     pub mac_address: [u8; 6],
-    pub rx_buffer_consumer: unbounded::UnboundedReceiver<Vec<u8>>,
+    pub rx_buffer_consumer: bounded::scq::Receiver<RxBufferPacket>,
 }
 
 impl IntelE1000Device{
@@ -96,13 +98,18 @@ impl IntelE1000Device{
         //set up descriptor rings
         let rx_desc_ring = set_up_rx_desc_ring(&registers);
         //let tx_desc_ring = set_up_tx_desc_ring(&registers);
+        initialize_tx_ring();
         set_up_tx_desc_ring(&registers, get_tx_ring());
         //get mac address
         let mac_address = registers.read_mac_address();
         E1000Registers::set_mac_address(&registers, &mac_address);
         
         //allocate memory for received_buffer
-        let (rx_buffer_consumer, rx_buffer_producer) = unbounded::queue();
+        //for now, use a bounded queue to get around having multiple mutable references to the buffer
+        //mutable references would have to be synchronized, but since the producer end is passed to the interrupt handler,
+        //which deadlocks if it fails to instantly obtain the spinlock, i cannot synchronize the producer end
+        //RX_NUM_DESCRIPTORS * 1500 as 1500 is the MTU should be enough to hold at least one time the rx ring.
+        let (rx_buffer_consumer, rx_buffer_producer) = bounded::scq::queue::<RxBufferPacket>(RX_NUM_DESCRIPTORS);
         //let received_buffer = Vec::new();
 
         //if possible, change the following using Rc or Arc - data has to be mutable, that is the problem
@@ -132,4 +139,13 @@ impl IntelE1000Device{
         
 
     }
+}
+
+fn initialize_tx_ring() {
+    let mut tx_ring = get_tx_ring().lock();
+    let mut descriptors = Vec::new();
+    for _ in 0..TX_NUM_DESCRIPTORS {
+        descriptors.push(E1000TxDescriptor::default());
+    }
+    *tx_ring = Some(descriptors);
 }

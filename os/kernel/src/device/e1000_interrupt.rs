@@ -2,11 +2,11 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use log::info;
 use pci_types::InterruptLine;
-use nolock::queues::spsc::unbounded;
+use nolock::queues::mpmc::bounded;
 
 //use core::sync::atomic::{AtomicBool, Ordering};
 
-use crate::device::e1000_descriptor::{retrieve_packets, rx_ring_pop, E1000RxDescriptor};
+use crate::device::e1000_descriptor::{retrieve_packets, rx_ring_pop, E1000RxDescriptor, RxBufferPacket};
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::interrupt::interrupt_dispatcher::{InterruptVector};
 use crate::{apic, interrupt_dispatcher};
@@ -19,13 +19,13 @@ struct E1000InterruptHandler{
     registers: E1000Registers,
     rx_ring: Vec<E1000RxDescriptor>,
     //rx_buffer: Vec<Vec<u8>>,
-    rx_buffer_producer: unbounded::UnboundedSender<Vec<u8>>,
+    rx_buffer_producer: bounded::scq::Sender<RxBufferPacket>,
 
 }
 
 //seperate impl block needed, since new is not part of InterruptHandler trait
 impl E1000InterruptHandler{
-    fn new(registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, rx_buffer_producer: unbounded::UnboundedSender<Vec<u8>>) -> Self{
+    fn new(registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, rx_buffer_producer: bounded::scq::Sender<RxBufferPacket>) -> Self{
         E1000InterruptHandler{
             registers,
             rx_ring: rx_desc_ring,
@@ -82,7 +82,7 @@ impl InterruptHandler for E1000InterruptHandler{
 
             //retrieve_packets(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
             //let packets = RECEIVED_BUFFER.lock();
-            retrieve_packets(&mut self.rx_ring, &self.registers, &mut self.rx_buffer_producer);
+            retrieve_packets(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
             //more relaxed forms of ordering could lead to race conditions - i think
             //RX_NEW_DATA.store(true, Ordering::SeqCst);
 
@@ -96,7 +96,7 @@ impl InterruptHandler for E1000InterruptHandler{
 
             //rx_ring_pop(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
             //let mut packets = RECEIVED_BUFFER.lock();
-            rx_ring_pop(&mut self.rx_ring, &self.registers, &mut self.rx_buffer_producer);
+            rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
             //RX_NEW_DATA.store(true, Ordering::SeqCst);
 
         }
@@ -116,7 +116,7 @@ impl InterruptHandler for E1000InterruptHandler{
 }
 
 
-pub fn map_irq_to_vector(interrupt_line: InterruptLine, registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, rx_buffer_producer: unbounded::UnboundedSender<Vec<u8>>){
+pub fn map_irq_to_vector(interrupt_line: InterruptLine, registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, rx_buffer_producer: bounded::scq::Sender<RxBufferPacket>){
     //add 32 because first 32 are reserved for cpu exceptions
     let interrupt_vector = InterruptVector::try_from(interrupt_line as u8 + 32).unwrap();
     let handler = Box::new(E1000InterruptHandler::new(registers, rx_desc_ring, rx_buffer_producer));

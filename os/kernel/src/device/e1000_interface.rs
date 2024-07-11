@@ -5,7 +5,7 @@ use nolock::queues::spsc::unbounded;
 
 //use core::sync::atomic::{AtomicBool, Ordering};
 
-use super::e1000_descriptor::{TxBuffer, tx_conncect_buffer_to_descriptors};
+use super::e1000_descriptor::{TxBuffer, tx_conncect_buffer_to_descriptors, RxBufferPacket};
 use super::e1000_driver::{IntelE1000Device, get_tx_ring};
 
 pub struct E1000Interface{
@@ -52,8 +52,14 @@ pub fn transmit(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE1000Dev
     }
 }
 
-pub fn receive_data(device: &mut IntelE1000Device) -> Option<Vec<u8>>{
-    device.rx_buffer_consumer.dequeue()
+pub fn receive_data(device: &IntelE1000Device) -> Option<RxBufferPacket>{
+    match device.rx_buffer_consumer.try_dequeue() {
+        Ok(packet) => Some(packet),
+        Err(_) =>{
+            info!("Receive Queue is empty");
+            None
+        }
+    }
 }
 
 //returns ONE packet if available, else None
