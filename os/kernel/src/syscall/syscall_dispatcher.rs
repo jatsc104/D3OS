@@ -8,7 +8,7 @@ use x86_64::structures::gdt::SegmentSelector;
 use x86_64::{PrivilegeLevel, VirtAddr};
 use syscall::NUM_SYSCALLS;
 use crate::{core_local_storage, tss};
-use crate::syscall::{sys_write, sys_thread_exit, sys_thread_sleep, sys_thread_switch, sys_process_id, sys_thread_id, sys_read, sys_map_user_heap, sys_thread_join, sys_process_execute_binary, sys_get_system_time, sys_get_date, sys_set_date, sys_thread_create, sys_process_exit, sys_receive_data, sys_transmit_data};
+use crate::syscall::{sys_write, sys_thread_exit, sys_thread_sleep, sys_thread_switch, sys_process_id, sys_thread_id, sys_read, sys_map_user_heap, sys_thread_join, sys_process_execute_binary, sys_get_system_time, sys_get_date, sys_set_date, sys_thread_create, sys_process_exit, sys_receive_data, sys_transmit_data, sys_get_mac_address};
 
 pub const CORE_LOCAL_STORAGE_TSS_RSP0_PTR_INDEX: u64 = 0x00;
 pub const CORE_LOCAL_STORAGE_USER_RSP_INDEX: u64 = 0x08;
@@ -78,7 +78,8 @@ impl SyscallTable {
                 sys_get_date as *const _,
                 sys_set_date as *const _,
                 sys_transmit_data as *const _,
-                sys_receive_data as *const _
+                sys_receive_data as *const _,
+                sys_get_mac_address as *const _
             ],
         }
     }

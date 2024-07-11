@@ -15,6 +15,7 @@ use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::thread::Thread;
 
 use super::device::e1000_interface::{NetworkProtocol, transmit, receive_data};
+use super::device::e1000_descriptor::RxBufferPacket;
 
 pub mod syscall_dispatcher;
 
@@ -178,7 +179,8 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
 
 /// Wrapper for the kernel transmit function.
 /// only supports Ethernet protocol for now
-pub fn sys_transmit_data(data: usize, protocol: usize) {
+#[no_mangle]
+pub extern "C" fn sys_transmit_data(data: usize, protocol: usize) {
 //TODO: return a result so i can re-send the data if it fails
     let data = unsafe {
         &*(data as *const Vec<u8>)
@@ -197,11 +199,24 @@ pub fn sys_receive_data(data: usize) {
         &mut *(data as *mut Vec<u8>)
     };
     let mut device = e1000_device();
-    let received_data = receive_data(&mut device);
+    let received_data = receive_data(&device);
     match received_data {
         Some(rx_data) => {
-            rx_data.iter().for_each(|byte| data.push(*byte));
+            data.extend_from_slice(&rx_data.data[..rx_data.length]);
         }
         None => {}
     }
+}
+
+//implies 64bit system
+pub fn sys_get_mac_address() -> usize{
+    let device = e1000_device();
+    let mac_address = device.mac_address;
+    let mac_address_usize = mac_address[0] as usize
+    | (mac_address[1] as usize) << 8
+    | (mac_address[2] as usize) << 16
+    | (mac_address[3] as usize) << 24
+    | (mac_address[4] as usize) << 32
+    | (mac_address[5] as usize) << 40;
+    mac_address_usize
 }

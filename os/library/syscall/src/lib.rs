@@ -1,7 +1,7 @@
 #![no_std]
 
 use core::arch::asm;
-use crate::SystemCall::SetDate;
+use crate::SystemCall::GetMacAddress;
 
 #[repr(usize)]
 #[allow(dead_code)]
@@ -20,10 +20,13 @@ pub enum SystemCall {
     ThreadExit,
     GetSystemTime,
     GetDate,
-    SetDate
+    SetDate,
+    TransmitData,
+    ReceiveData,
+    GetMacAddress
 }
 
-pub const NUM_SYSCALLS: usize = SetDate as usize + 3;
+pub const NUM_SYSCALLS: usize = GetMacAddress as usize + 1;
 
 #[inline(always)]
 pub fn syscall0(call: SystemCall) -> usize {
