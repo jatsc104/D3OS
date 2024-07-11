@@ -25,7 +25,7 @@ struct E1000InterruptHandler{
 
 //seperate impl block needed, since new is not part of InterruptHandler trait
 impl E1000InterruptHandler{
-    fn new(registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, mut rx_buffer_producer: unbounded::UnboundedSender<Vec<u8>>) -> Self{
+    fn new(registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, rx_buffer_producer: unbounded::UnboundedSender<Vec<u8>>) -> Self{
         E1000InterruptHandler{
             registers,
             rx_ring: rx_desc_ring,
@@ -116,7 +116,7 @@ impl InterruptHandler for E1000InterruptHandler{
 }
 
 
-pub fn map_irq_to_vector(interrupt_line: InterruptLine, registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, mut rx_buffer_producer: unbounded::UnboundedSender<Vec<u8>>){
+pub fn map_irq_to_vector(interrupt_line: InterruptLine, registers: E1000Registers, rx_desc_ring: Vec<E1000RxDescriptor>, rx_buffer_producer: unbounded::UnboundedSender<Vec<u8>>){
     //add 32 because first 32 are reserved for cpu exceptions
     let interrupt_vector = InterruptVector::try_from(interrupt_line as u8 + 32).unwrap();
     let handler = Box::new(E1000InterruptHandler::new(registers, rx_desc_ring, rx_buffer_producer));
