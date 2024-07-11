@@ -23,7 +23,7 @@ pub enum SystemCall {
     SetDate
 }
 
-pub const NUM_SYSCALLS: usize = SetDate as usize + 1;
+pub const NUM_SYSCALLS: usize = SetDate as usize + 3;
 
 #[inline(always)]
 pub fn syscall0(call: SystemCall) -> usize {

@@ -1,6 +1,7 @@
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::ToString;
+use alloc::vec::Vec;
 use core::ptr;
 use core::ptr::slice_from_raw_parts;
 use core::str::from_utf8;
@@ -8,10 +9,12 @@ use chrono::{Datelike, DateTime, TimeDelta, Timelike};
 use uefi::table::runtime::{Time, TimeParams};
 use x86_64::structures::paging::PageTableFlags;
 use x86_64::VirtAddr;
-use crate::{efi_system_table, initrd, process_manager, scheduler, terminal, timer};
+use crate::{e1000_device, efi_system_table, initrd, process_manager, scheduler, terminal, timer};
 use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::thread::Thread;
+
+use super::device::e1000_interface::{NetworkProtocol, transmit, receive_data};
 
 pub mod syscall_dispatcher;
 
@@ -171,4 +174,34 @@ pub extern "C" fn sys_set_date(date_ms: usize) -> usize {
     }
 
     return false as usize;
+}
+
+/// Wrapper for the kernel transmit function.
+/// only supports Ethernet protocol for now
+pub fn sys_transmit_data(data: usize, protocol: usize) {
+//TODO: return a result so i can re-send the data if it fails
+    let data = unsafe {
+        &*(data as *const Vec<u8>)
+    };
+    let device = e1000_device();
+    let protocol = match protocol {
+        0 => NetworkProtocol::Ethernet,
+        _ => panic!("Unsupported network protocol")
+    };
+    transmit(data.clone(), protocol, &device);
+}
+
+/// Wrapper for the kernel receive function.
+pub fn sys_receive_data(data: usize) {
+    let data = unsafe {
+        &mut *(data as *mut Vec<u8>)
+    };
+    let mut device = e1000_device();
+    let received_data = receive_data(&mut device);
+    match received_data {
+        Some(rx_data) => {
+            rx_data.iter().for_each(|byte| data.push(*byte));
+        }
+        None => {}
+    }
 }
