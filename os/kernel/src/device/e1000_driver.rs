@@ -1,7 +1,7 @@
 //use acpi::platform::interrupt;
 use alloc::vec::Vec;
 use log::info;
-//use spin::Mutex;
+use spin::Mutex;
 use nolock::queues::spsc::unbounded;
 
 //use core::sync::atomic::AtomicBool;
@@ -19,6 +19,13 @@ use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxD
 //putting them in a data structure like IntelE1000Device sadly does not work, since i also need two mutable refenerences to each of them - producer and consumer
 //pub static RX_NEW_DATA: AtomicBool = AtomicBool::new(false);
 //pub static RECEIVED_BUFFER: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
+
+pub const TX_NUM_DESCRIPTORS: usize = 64;
+
+static TX_RING: Mutex<Option<Vec<E1000TxDescriptor>>> = Mutex::new(None);
+pub fn get_tx_ring() -> &'static Mutex<Option<Vec<E1000TxDescriptor>>>{
+    &TX_RING
+}
 
 
 pub struct RxRingVecToPtr{
@@ -62,7 +69,7 @@ pub struct IntelE1000Device{
     pub registers: E1000Registers,
     //pub received_buffer: Vec<Vec<u8>>,
     //pub rx_desc_ring: Vec<E1000RxDescriptor>,
-    pub tx_desc_ring: Vec<E1000TxDescriptor>,
+    //pub tx_desc_ring: Vec<E1000TxDescriptor>,
     pub mac_address: [u8; 6],
     pub rx_buffer_consumer: unbounded::UnboundedReceiver<Vec<u8>>,
 }
@@ -88,13 +95,14 @@ impl IntelE1000Device{
         
         //set up descriptor rings
         let rx_desc_ring = set_up_rx_desc_ring(&registers);
-        let tx_desc_ring = set_up_tx_desc_ring(&registers);
-
+        //let tx_desc_ring = set_up_tx_desc_ring(&registers);
+        set_up_tx_desc_ring(&registers, get_tx_ring());
         //get mac address
         let mac_address = registers.read_mac_address();
+        E1000Registers::set_mac_address(&registers, &mac_address);
         
         //allocate memory for received_buffer
-        let (mut rx_buffer_consumer, mut rx_buffer_producer) = unbounded::queue();
+        let (rx_buffer_consumer, rx_buffer_producer) = unbounded::queue();
         //let received_buffer = Vec::new();
 
         //if possible, change the following using Rc or Arc - data has to be mutable, that is the problem
@@ -117,7 +125,7 @@ impl IntelE1000Device{
             registers,
             //received_buffer: received_buffer,
             //rx_desc_ring,
-            tx_desc_ring,
+            //tx_desc_ring,
             mac_address,
             rx_buffer_consumer,
         }

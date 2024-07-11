@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use log::info;
 use core::mem::MaybeUninit;
-//use spin::MutexGuard;
+use spin::Mutex;
 use nolock::queues::spsc::unbounded;
 
 use alloc::boxed::Box;
@@ -9,6 +9,7 @@ use x86_64::registers;
 
 use super::e1000_register::E1000Registers;//::{write_rdbah, write_rdbal, write_rdlen, write_rdh, write_rdt};
 use super::e1000_interface::NetworkProtocol;
+use super::e1000_driver::TX_NUM_DESCRIPTORS;
 
 // Define the transmit descriptor
 #[repr(C)]
@@ -206,9 +207,9 @@ impl TxBuffer{
 
 
 
-pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>{
+pub fn set_up_tx_desc_ring(registers: &E1000Registers, tx_ring: &'static Mutex<Option<Vec<E1000TxDescriptor>>>) {
 //NOT READY YET; FIX INITIALISING
-    const NUM_DESCRIPTORS: usize = 64;
+    //const TX_NUM_DESCRIPTORS: usize = 64;
 
     const E1000_TCTL_PSP: u32 = 1 << 3;     // Pad short packets
     const E1000_TCTL_CT: u32 = 0x0F << 4;  // Collision threshold - only has meaning in half duplex
@@ -219,32 +220,47 @@ pub fn set_up_tx_desc_ring(registers: &E1000Registers) -> Vec<E1000TxDescriptor>
     let settings = tctl | E1000_TCTL_PSP | E1000_TCTL_CT | E1000_TCTL_COLD_FD;
     E1000Registers::write_tctl(registers, settings);
     // Allocate memory for the descriptors.
-    let mut descriptors: Vec<E1000TxDescriptor> = Vec::with_capacity(NUM_DESCRIPTORS);
+    //let mut descriptors: Vec<E1000TxDescriptor> = Vec::with_capacity(TX_NUM_DESCRIPTORS);
+    let mut descriptors = tx_ring.lock();
+    match descriptors.as_mut(){
+        Some(descriptors_vec) => {
 
-    // Initialize each descriptor.
-    for descriptor in descriptors.iter_mut() {
-        // Set the buffer address to the address of some buffer.
-        // This is where the E1000 card will read data to transmit.
-        descriptor.buffer_addr = 0;
-
-        // Set the length to the length of the data to transmit.
-        descriptor.length = 0;
-
-//TODO: Set the command field to indicate that this descriptor is ready to be used.
-        //descriptor.cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
-
-        // Set the status field to 0 to indicate that this descriptor has not been used yet.
-        descriptor.status = 0;
+            
+            // Initialize each descriptor.
+            for descriptor in descriptors_vec.iter_mut() {
+                // Set the buffer address to the address of some buffer.
+                // This is where the E1000 card will read data to transmit.
+                descriptor.buffer_addr = 0;
+                
+                // Set the length to the length of the data to transmit.
+                descriptor.length = 0;
+                
+                //TODO: Set the command field to indicate that this descriptor is ready to be used.
+                //descriptor.cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+                
+                // Set the status field to 0 to indicate that this descriptor has not been used yet.
+                descriptor.status = 0;
+            }
+        }
+        None => {
+            info!("Tx Ring not initialized");
+        }
     }
 
-    E1000Registers::write_tdbal(registers, descriptors.as_ptr() as u32);
-    E1000Registers::write_tdbah(registers, ((descriptors.as_ptr() as u64 )>>32) as u32);
+    if let Some(descriptors_vec) = descriptors.as_ref() {
+        let descriptors_ptr = descriptors_vec.as_ptr();
+        
+        E1000Registers::write_tdbal(registers, descriptors_ptr as u32);
+        E1000Registers::write_tdbah(registers, ((descriptors_ptr as u64 )>>32) as u32);
+    } else {
+        info!("Tx Ring not initialized");
+    }
     //sizeof(E1000TxDescriptor) should be 16 bytes
-    E1000Registers::write_tdlen(registers, (NUM_DESCRIPTORS * core::mem::size_of::<E1000TxDescriptor>()) as u32);
+    E1000Registers::write_tdlen(registers, (TX_NUM_DESCRIPTORS * core::mem::size_of::<E1000TxDescriptor>()) as u32);
     E1000Registers::write_tdh(registers, 0);
-    E1000Registers::write_tdt(registers, NUM_DESCRIPTORS as u32 - 1);
+    E1000Registers::write_tdt(registers, TX_NUM_DESCRIPTORS as u32 - 1);
 
-    descriptors
+//    descriptors
 }
 
 pub fn enable_transmit(registers: &E1000Registers){
@@ -328,7 +344,7 @@ pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
 //    let source_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x57];
 //    let ethertype: [u8; 2] = [0x08, 0x00]; //0x0800 is Ethertype for IPv4
     //combine into one header
-    let mut header = &tx_buffer.data[..header_size]; 
+    let header = &tx_buffer.data[..header_size]; 
 
     //MTU = Maximum Transmission Unit - Maximum size of a packet including header
     const MTU: usize = 1500; //limited through ethernet frame size - jumbo frames with 9728 bytes should be supported as well
