@@ -3,11 +3,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use syscall::{syscall1, syscall2};
-use kernel::e1000_device;
-use kernel::device::e1000_interface::{NetworkProtocol, transmit, receive_data};
-use kernel::device::e1000_driver::IntelE1000Device;
-use kernel::device::pit::Timer;
+use syscall::{syscall1, syscall2, SystemCall, syscall0};
 
 use io::{print, println};
 //required for panic handler
@@ -39,15 +35,15 @@ impl EthernetHeader{
 #[no_mangle]
 pub fn main() {
     println!("Hello, world!");
-    let mut device = e1000_device();
-    let EthernetHeader = build_ethernet_header(&device);
+    let mac = syscall0(SystemCall::GetMacAddress);
+    let EthernetHeader = build_ethernet_header(mac);
     let data_array: [u8; 64] = [0b01010101; 64];
     let mut data_vec = Vec::from(EthernetHeader.to_bytes().to_vec());
     data_vec.extend_from_slice(&data_array);
 //TODO: change transmit call to system call - change data_vec to &Vec<u8> and resolve NetworkProtocol enum in syscall
         //furthermore, i have no access to the device, but since it will never change i can get it inside the syscall
     let data_ptr = &data_vec as *const _ as usize;
-    syscall2(sys_transmit_data, data_ptr, 0 as usize);
+    syscall2(SystemCall::TransmitData, data_ptr, 0 as usize);
     //transmit(data_vec, NetworkProtocol::Ethernet, &mut device);
     println!("Data sent");
     //wait for the packet to be sent and received/put on the receive queue
@@ -59,24 +55,28 @@ pub fn main() {
 //TODO: change receive_data call to system call -> to return the data, try to give a &mut Vec<u8> as argument
     let received_data: Vec<u8> = Vec::new();
     let received_data_ptr = &received_data as *const _ as usize;
-    syscall1(sys_receive_data, received_data_ptr);
-    match received_data{
-        Some(data) => {
-            println!("Received data: {:?}", data);
-        }
-        None => {
-            println!("No data received");
-        }
-    }
+    syscall1(SystemCall::ReceiveData, received_data_ptr);
+    println!("Received data: {:?}", received_data);
 }
 
-fn build_ethernet_header(device: &IntelE1000Device) -> EthernetHeader{
+fn build_ethernet_header(mac: usize) -> EthernetHeader{
 
     //used for debugging in loopback mode, so the packets never leave the card - use broadcast address so i use a valid mac address
     let destination_mac = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
-    let source_mac = device.mac_address;
+    let source_mac = usize_to_mac(mac);
 
     EthernetHeader::new(destination_mac, source_mac, 0x0800)
 }
 
+fn usize_to_mac(mac_address_usize: usize) -> [u8; 6] {
+    let mac_address = [
+        (mac_address_usize & 0xff) as u8,
+        ((mac_address_usize >> 8) & 0xff) as u8,
+        ((mac_address_usize >> 16) & 0xff) as u8,
+        ((mac_address_usize >> 24) & 0xff) as u8,
+        ((mac_address_usize >> 32) & 0xff) as u8,
+        ((mac_address_usize >> 40) & 0xff) as u8,
+    ];
+    mac_address
+}
 
