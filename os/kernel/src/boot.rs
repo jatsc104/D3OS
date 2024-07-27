@@ -8,6 +8,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
+use crate::device::e1000_driver::e1000_run;
 use crate::interrupt::interrupt_dispatcher;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
@@ -194,6 +195,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
 
     // Initialize E1000 network device
     init_e1000();
+    e1000_run();
 
     // Load initial ramdisk
     let initrd_tag = multiboot.module_tags()
@@ -209,7 +211,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
             process_manager().write().drop_exited_process();
         }
     }));
-
+    
     // Create and register the 'shell' thread (from app image in ramdisk) in the scheduler
     scheduler().ready(Thread::load_application(initrd().entries()
         .find(|entry| entry.filename().as_str().unwrap() == "shell")
@@ -227,6 +229,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     info!("Starting scheduler");
     apic().start_timer(10);
     scheduler().start();
+
 }
 
 

@@ -7,7 +7,9 @@ use nolock::queues::mpmc::bounded;
 //use core::sync::atomic::AtomicBool;
 
 use crate::device::e1000_descriptor::RxBufferPacket;
-use crate::pci_bus;
+use crate::device::pit::Timer;
+use crate::{e1000_device, pci_bus};
+use super::e1000_interface::{transmit, receive_data, NetworkProtocol};
 //use pci_types::{EndpointHeader, InterruptLine};
 use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
 use super::e1000_register::E1000Registers;
@@ -90,7 +92,6 @@ impl IntelE1000Device{
         //need mmio(base)_adress for controller (register access)
         let mmio_adress = map_mmio_space(pci_bus, e1000_device);
         info!("MMIO address: {:?}", mmio_adress.as_u64());
-        //let controller...
         let registers = E1000Registers::new(mmio_adress);
         registers.init_config_e1000();
         
@@ -122,6 +123,8 @@ impl IntelE1000Device{
         //also registers interrupt handler and configures apic
         map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, rx_buffer_producer);
         enable_interrupts(&registers);
+
+        print_tx_ring();
         
         //enable receive and transmit units
         enable_receive(&registers);
@@ -148,4 +151,69 @@ fn initialize_tx_ring() {
         descriptors.push(E1000TxDescriptor::default());
     }
     *tx_ring = Some(descriptors);
+}
+
+fn print_tx_ring() {
+    let binding = get_tx_ring().lock();
+    let tx_ring = binding.as_ref().unwrap();
+    for (i, descriptor) in tx_ring.iter().enumerate() {
+        info!("Descriptor {}: {:?}", i, descriptor);
+    }
+}
+
+pub fn e1000_run(){
+    let device = e1000_device();
+    let mac = device.mac_address;
+    let ethernet_header = build_ethernet_header(mac);
+    let data_array: [u8; 64] = [0b01010101; 64];
+    let mut data_vec = Vec::from(ethernet_header.to_bytes().to_vec());
+    data_vec.extend_from_slice(&data_array);
+    transmit(data_vec, NetworkProtocol::Ethernet, device);
+    info!("Data sent");
+    Timer::wait(5000);
+    let mut rx_data = Vec::new();
+    fetch_rx_data(&mut rx_data);
+    fetch_rx_data(&mut rx_data);
+    info!("Received data: {:?}", rx_data);
+    let status = device.registers.read_status();
+    info!("Status: {:b}", status);
+
+}
+
+fn fetch_rx_data(rx_data: &mut Vec<u8>){
+    let device = e1000_device();
+    let received_data = receive_data(&device);
+    match received_data {
+        Some(data) => {
+            rx_data.extend_from_slice(&data.data[..data.length]);
+        }
+        None => {}
+    }
+}
+
+struct EthernetHeader{
+    destination_mac: [u8; 6],
+    source_mac: [u8; 6],
+    ethertype: u16,
+}
+
+impl EthernetHeader{
+    fn new(destination_mac: [u8; 6], source_mac: [u8; 6], ethertype: u16) -> Self{
+        EthernetHeader{
+            destination_mac,
+            source_mac,
+            ethertype,
+        }
+    }
+    fn to_bytes(&self) -> [u8; 14]{
+        let mut header = [0u8; 14];
+        header[0..6].copy_from_slice(&self.destination_mac);
+        header[6..12].copy_from_slice(&self.source_mac);
+        header[12..14].copy_from_slice(&self.ethertype.to_be_bytes());
+        header
+    }
+}
+
+fn build_ethernet_header(mac: [u8; 6]) -> EthernetHeader{
+    EthernetHeader::new([0xff, 0xff, 0xff, 0xff, 0xff, 0xff], mac, 0x0800)
 }
