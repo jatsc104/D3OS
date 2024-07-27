@@ -15,14 +15,8 @@ pub fn get_e1000_device(pci_bus: &PciBus)->&EndpointHeader{
     const E1000_VENDOR_ID: u16 = 0x8086;
     const E1000_DEVICE_ID: u16 = 0x100e;
     //look for device on pci bus
-//TODO: inject bus from outside
-    //let pci_bus = pci_bus();
     let e1000_devices = pci_bus.search_by_ids(E1000_VENDOR_ID, E1000_DEVICE_ID);
     //check if device is found
-//TODO: move bar stuff to different function
-//    for device in e1000_devices{
-//        let mmio_address = device.bar(0, pci_bus.config_space()).unwrap();
-//    }
     if e1000_devices.len() == 0 {
         panic!("No e1000 device found");
     }
@@ -36,16 +30,9 @@ pub fn get_e1000_device(pci_bus: &PciBus)->&EndpointHeader{
 }
 
 pub fn enable_device(device: &EndpointHeader, pci_bus: &PciBus){
-    //Read current value of command register to persist settings i am not interested in
-    //let mut command = config_space.read(device.);
-    //maybe ensure top 5 bits are 0 by &= 0x07FF
-    //set bits for (IO Space, ) Memory space, Bus Mastering
-//TODO: read up on closures
-//TODO: is IO_ENABLE necessary for e1000? - since i already have MMIO
     device.update_command(pci_bus.config_space(), |command| {
         command | CommandRegister::BUS_MASTER_ENABLE | CommandRegister::MEMORY_ENABLE
     });
-    //write back to command register
     info!("E1000 enabled");
 }
 
