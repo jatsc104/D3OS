@@ -1,8 +1,10 @@
-use alloc::vec::Vec;
+use alloc::vec::{self, Vec};
 use log::info;
 use core::mem::MaybeUninit;
 use spin::Mutex;
 use nolock::queues::mpmc::bounded;
+use alloc::alloc::{GlobalAlloc, Layout, alloc_zeroed};
+use core::ptr;
 
 use alloc::boxed::Box;
 use x86_64::registers;
@@ -13,6 +15,7 @@ use super::e1000_driver::TX_NUM_DESCRIPTORS;
 
 // Define the transmit descriptor
 #[repr(C)]
+#[derive(Debug)]
 pub struct E1000TxDescriptor {
     buffer_addr: u64,
     length: u16,
@@ -66,30 +69,65 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     //allocate memory for receive descriptor ring
     //let mut receive_ring: Box<[E1000RxDescriptor]> = vec![E1000RxDescriptor::default(); RECEIVE_RING_SIZE].into_boxed_slice();
     //let mut receive_ring: ArrayVec<[E1000RxDescriptor; RECEIVE_RING_SIZE]> = ArrayVec::new();
-    let mut receive_ring: Vec<E1000RxDescriptor> = Vec::with_capacity(RECEIVE_RING_SIZE);
+
+    //let mut receive_ring: Vec<E1000RxDescriptor> = Vec::with_capacity(RECEIVE_RING_SIZE);
+    let layout = Layout::from_size_align(RECEIVE_RING_SIZE * core::mem::size_of::<E1000RxDescriptor>(), 16).unwrap();
+    let receive_ring_ptr = unsafe { alloc_zeroed(layout) } as *mut E1000RxDescriptor;
+    if receive_ring_ptr.is_null(){
+        panic!("Failed to allocate memory for receive ring");
+    }
+
+    //build Vec from pointer - refactoring the rest of the code using the pointer is not worth it
+    let mut receive_ring = unsafe {
+        Vec::from_raw_parts(receive_ring_ptr, RECEIVE_RING_SIZE, RECEIVE_RING_SIZE)
+    };
+    
+    for descriptor in receive_ring.iter_mut(){
+        //let buffer: [MaybeUninit<u8>; BUFFER_SIZE] = unsafe {
+        //    MaybeUninit::uninit().assume_init()
+        //};
+        //let buffer_addr = Box::into_raw(Box::new(buffer)) as u64;
+
+        //let buffer = vec![0u8; BUFFER_SIZE];
+        let mut buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE);
+        //for _ in 0..BUFFER_SIZE{
+        //    buffer.push(0);
+        //}
+        buffer.resize(BUFFER_SIZE, 0);  //note that the memory might get realloced to a different address - all address operations should be done after this.
+        let buffer_addr = buffer.as_ptr() as u64;
+
+        //Set buffer address in descriptor for card to write to
+        descriptor.buffer_addr = buffer_addr;
+
+        let _ = core::mem::ManuallyDrop::new(buffer);
+    }
 
     //init each descriptor in the ring
     //for descriptor in receive_ring.iter_mut(){
-    for _ in 0..RECEIVE_RING_SIZE{
+    //for _ in 0..RECEIVE_RING_SIZE{
         //allocate buffer for desc
-        //let buffer = vec![0u8; BUFFER_SIZE].into_boxed_slice();
-        //this is very very very not schön, pls change bc this is all undefinded behaviour
-        let buffer: [MaybeUninit<u8>; BUFFER_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
+    //    let buffer: [MaybeUninit<u8>; BUFFER_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
         //pray to god it works and i dont have to touch this again
-        let buffer_addr = Box::into_raw(Box::new(buffer)) as u64; //should work if memory is mapped 1:1 to physical memory
+    //    let buffer_addr = Box::into_raw(Box::new(buffer)) as u64; //should work if memory is mapped 1:1 to physical memory
         //set buffer address in descriptor for card to write to
-        //descriptor.buffer_addr = buffer_addr;
-        let descriptor = E1000RxDescriptor{
-            buffer_addr,
-            ..Default::default()
-        };
-        receive_ring.push(descriptor);
-    }
+
+    //    unsafe {
+    //        let descriptor = &mut *receive_ring_ptr.offset(i as isize);
+    //        descriptor.buffer_addr = buffer_addr;
+    //    }
+
+        //belongs to the Vec implementation
+//        let descriptor = E1000RxDescriptor{
+//            buffer_addr,
+//            ..Default::default()
+//        };
+//        receive_ring.push(descriptor);
 
 
-    //let ring_addr = Box::into_raw(receive_ring) as u64;
-    //*const _ as u64 is cast to raw pointer to u64 */
+//    }
+
     let ring_addr = receive_ring.as_ptr() as u64;
+//    let ring_addr = receive_ring_ptr as u64;
 
     //write base address of receive descriptor ring to card (RDBAL and RDBAH)
     //as u32? or just as is?
@@ -288,6 +326,18 @@ pub fn enable_transmit(registers: &E1000Registers){
     E1000Registers::write_tctl(registers, tctl | E1000_TCTL_EN);
 }
 
+fn print_tx_ring(tx_ring: &Vec<E1000TxDescriptor>){
+    for (i, descriptor) in tx_ring.iter().enumerate(){
+        info!("Descriptor {}: {:?}", i, descriptor);
+    }
+}
+fn print_tdt(registers: &E1000Registers){
+    info!("TDT: {:?}", E1000Registers::read_tdt(registers));
+}
+fn print_tdh(registers: &E1000Registers){
+    info!("TDH: {:?}", E1000Registers::read_tdh(registers));
+}
+
 
 //passing tx:ring as slice bc is more flexible
 //passing tx_ring as Vec so i can calculate here which part to access, i also need tx_ring.len() for the wrap around calculation
@@ -301,6 +351,7 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
                                                 //this function should support jumbo frames, but create_packets does not
     const E1000_TXD_CMD_RS: u8 = 1 << 3;
     const E1000_TXD_CMD_EOP: u8 = 1 << 0;
+    const SAFETY_MARGIN: usize = 1;
 
     //are these variables faster than using the registers directly? - i suppose, but do not know
     let mut tdt = E1000Registers::read_tdt(registers) as usize;
@@ -309,7 +360,9 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
     for packet in packets{
         //wait for room in the ring buffer
         //wrap around necessary since tdt could be at the end of the ring buffer
-        while(tdt + 1)%tx_ring_len == tdh{
+        //maybe just check if tdh is close to 0, that would indicate that the ring buffer is pretty empty
+//TODO: not correct. tdh is the value of HEAD corresponding to other descriptors in the cards internal fifo output queue.
+        while(tdt + 1 + SAFETY_MARGIN)%tx_ring_len == tdh{
             //update tdh - card has responsibility to update tdh
             tdh = E1000Registers::read_tdh(registers) as usize;
             //this would be a good spot to make room for other threads in a multithreaded environment
@@ -323,7 +376,12 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
         descriptor.status = 0;
         //update tdt
         //tdt = (tdt + 1) % tx_ring.len();
+        print_tx_ring(tx_ring);
+        print_tdh(registers);
+        print_tdt(registers);
         E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
+        print_tdt(registers);
+        print_tdh(registers);
 
         //assign the payload to one or more descriptors - jumbo frames not supported so each packet should be smaller than 4096 bytes
         let payload = &packet[header_size..];
