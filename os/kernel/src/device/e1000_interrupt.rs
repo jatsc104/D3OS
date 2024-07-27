@@ -86,7 +86,7 @@ impl InterruptHandler for E1000InterruptHandler{
             //more relaxed forms of ordering could lead to race conditions - i think
             //RX_NEW_DATA.store(true, Ordering::SeqCst);
 
-        info!("Interrupt handled");
+            info!("Interrupt handled");
         }
 
         if interrupt_cause & (ICR_RXT0) != 0{
@@ -98,6 +98,7 @@ impl InterruptHandler for E1000InterruptHandler{
             //let mut packets = RECEIVED_BUFFER.lock();
             rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
             //RX_NEW_DATA.store(true, Ordering::SeqCst);
+            info!("Packet received");
 
         }
 
@@ -138,6 +139,9 @@ pub fn enable_interrupts(registers: &E1000Registers) {
     const GPI2: u32 = 1 << 14;
     const TXD_LOW: u32 = 1 << 15;
     const SRPD: u32 = 1 << 16;
+
+    //disable all interrupts
+    registers.write_imc(0xFFFFFFFF);
 
     let interrupts_to_enable =  TXDW
                                 | TXQE
