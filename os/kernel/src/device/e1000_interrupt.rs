@@ -102,6 +102,11 @@ impl InterruptHandler for E1000InterruptHandler{
 
         }
 
+        //Test - subject to change
+        if interrupt_cause == 3{
+            rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
+        }
+
         //UNHANDLED INTERRUPTS
 
         //MDAC - MDI/O access complete - phy and ethernet controller connected
@@ -144,7 +149,7 @@ pub fn enable_interrupts(registers: &E1000Registers) {
     registers.write_imc(0xFFFFFFFF);
 
     let interrupts_to_enable =  TXDW
-                                | TXQE
+//                                | TXQE
                                 | LSC
                                 | RXDMT0
                                 | RXO
