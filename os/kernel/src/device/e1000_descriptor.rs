@@ -347,6 +347,30 @@ fn print_tdh(registers: &E1000Registers){
     info!("TDH: {:?}", E1000Registers::read_tdh(registers));
 }
 
+pub fn tx_conncect_buffer_to_descriptors_vecless(tx_ring: &mut Vec<E1000TxDescriptor>, tx_buffer: &TxBuffer, registers: &E1000Registers) {
+    let packet = create_packet_vecless(tx_buffer);
+
+    let mut tdt = E1000Registers::read_tdt(registers) as usize;
+    let mut tdh = E1000Registers::read_tdh(registers) as usize;
+
+    let tx_ring_len = tx_ring.len();
+
+    //skip checks for now
+
+    let descriptor = &mut tx_ring[tdt];
+    descriptor.buffer_addr = packet as u64;
+    descriptor.length = tx_buffer.size();
+    descriptor.cmd = 0x1 | 0x8;
+    descriptor.status = 0;
+
+    E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring_len) as u32);
+
+    print_tx_ring(tx_ring);
+    info!("crash indicator");
+
+
+}
+
 
 //passing tx:ring as slice bc is more flexible
 //passing tx_ring as Vec so i can calculate here which part to access, i also need tx_ring.len() for the wrap around calculation
@@ -425,6 +449,20 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
     }
 }
 
+pub fn create_packet_vecless(tx_buffer: &TxBuffer) -> *mut u8{
+    const MTU: usize = 1500;
+
+    let packets_mem = memory::physical::alloc(((tx_buffer.size()/4096) +1) as usize);
+    let packets_addr = packets_mem.start.start_address().as_u64();
+    let packets_ptr = packets_addr as *mut u8;
+
+    //copy tx_buffer data to packets
+    unsafe {
+        ptr::copy_nonoverlapping(tx_buffer.address() as *const u8, packets_ptr, tx_buffer.size() as usize);
+    }
+    packets_ptr
+}
+
 pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
 
     //let header_size = get_header_size(tx_buffer);
@@ -463,12 +501,7 @@ pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
         packet.extend_from_slice(chunk);
 
         info!("crashes after extending packet");
-//TODO: HEADER GETS RESIZED RIGHT NOW AS WELL - FIX THIS ASAP - resolved?
-        //Pad last/header packet to Max size so all packets are same size - helps with debugging
-//        if packet.len() < MTU{
-            //packet.extend_from_slice(&[0; MAX_PACKET_SIZE - chunk.len()]); - needs to know chunk.len() at compile time
-//            packet.resize(MTU, 0);
-//        }
+
         packets.push(packet);
         info!("crashes after pushing packet");
 

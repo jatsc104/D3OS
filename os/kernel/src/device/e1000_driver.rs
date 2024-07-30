@@ -10,6 +10,7 @@ use nolock::queues::mpmc::bounded;
 //use core::sync::atomic::AtomicBool;
 
 use crate::device::e1000_descriptor::RxBufferPacket;
+use crate::device::e1000_interface::transmit_test;
 use crate::device::pit::Timer;
 use crate::{e1000_device, memory, pci_bus};
 use super::e1000_interface::{transmit, receive_data, NetworkProtocol};
@@ -197,7 +198,7 @@ pub fn e1000_run(){
     let data_array: [u8; 64] = [0b01010101; 64];
     let mut data_vec = Vec::from(ethernet_header.to_bytes().to_vec());
     data_vec.extend_from_slice(&data_array);
-    transmit(data_vec, NetworkProtocol::Ethernet, device);
+    transmit_test(data_vec, NetworkProtocol::Ethernet, device);
     info!("Data sent");
     Timer::wait(5000);
     let mut rx_data = Vec::new();

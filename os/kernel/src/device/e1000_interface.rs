@@ -5,7 +5,7 @@ use nolock::queues::spsc::unbounded;
 
 //use core::sync::atomic::{AtomicBool, Ordering};
 
-use super::e1000_descriptor::{TxBuffer, tx_conncect_buffer_to_descriptors, RxBufferPacket};
+use super::e1000_descriptor::{TxBuffer, tx_conncect_buffer_to_descriptors, RxBufferPacket, tx_conncect_buffer_to_descriptors_vecless};
 use super::e1000_driver::{IntelE1000Device, get_tx_ring};
 
 pub struct E1000Interface{
@@ -37,6 +37,19 @@ impl Clone for NetworkProtocol{
     }
 }
 
+pub fn transmit_test(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE1000Device) {
+    //caller has to ensure that the data + the corresponding headers is not larger than the MTU = 1500 bytes
+    //but if it is, data gets divided into multiple packets by the driver anyways
+
+    let tx_buffer = TxBuffer::new(data, protocol);
+    let mut tx_ring_lock = get_tx_ring().lock();
+    let tx_ring = tx_ring_lock.as_mut();
+    if let Some(tx_ring) = tx_ring {
+        tx_conncect_buffer_to_descriptors_vecless(tx_ring, &tx_buffer, &device.registers);
+    } else {
+        info!("tx_ring could not be obtained for tranmit")
+    }
+}
 
 pub fn transmit(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE1000Device) {
     //caller has to ensure that the data + the corresponding headers is not larger than the MTU = 1500 bytes
