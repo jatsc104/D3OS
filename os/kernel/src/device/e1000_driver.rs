@@ -1,3 +1,6 @@
+use core::alloc::Layout;
+
+use alloc::alloc::alloc_zeroed;
 //use acpi::platform::interrupt;
 use alloc::vec::Vec;
 use log::info;
@@ -8,7 +11,7 @@ use nolock::queues::mpmc::bounded;
 
 use crate::device::e1000_descriptor::RxBufferPacket;
 use crate::device::pit::Timer;
-use crate::{e1000_device, pci_bus};
+use crate::{e1000_device, memory, pci_bus};
 use super::e1000_interface::{transmit, receive_data, NetworkProtocol};
 //use pci_types::{EndpointHeader, InterruptLine};
 use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
@@ -124,11 +127,14 @@ impl IntelE1000Device{
         map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, rx_buffer_producer);
         enable_interrupts(&registers);
 
-        print_tx_ring();
+        //print_tx_ring();
         
         //enable receive and transmit units
         enable_receive(&registers);
         enable_transmit(&registers);
+
+        let ctrl_reg = registers.read_ctrl();
+        info!("ctrl reg: {:b}", ctrl_reg);
 
         IntelE1000Device{
             //interrupt_line,
@@ -146,11 +152,34 @@ impl IntelE1000Device{
 
 fn initialize_tx_ring() {
     let mut tx_ring = get_tx_ring().lock();
-    let mut descriptors = Vec::new();
-    for _ in 0..TX_NUM_DESCRIPTORS {
-        descriptors.push(E1000TxDescriptor::default());
+    //let layout = Layout::from_size_align(TX_NUM_DESCRIPTORS * core::mem::size_of::<E1000TxDescriptor>(), 16).unwrap();
+    //let transmit_ring_ptr = unsafe { alloc_zeroed(layout) } as *mut E1000TxDescriptor;
+    //if transmit_ring_ptr.is_null() {
+    //    panic!("Failed to allocate memory for transmit ring");
+    //}
+
+    let phys_mem = memory::physical::alloc(1);
+    let phys_addr = phys_mem.start.start_address().as_u64();
+    //let addr_bool = phys_addr.is_aligned(16);
+
+    let transmit_ring_ptr = phys_addr as *mut E1000TxDescriptor;
+
+    
+
+    //build Vec from pointer
+    let mut transmit_ring = unsafe{
+        Vec::from_raw_parts(transmit_ring_ptr, TX_NUM_DESCRIPTORS, TX_NUM_DESCRIPTORS)
+    };
+
+    for descriptor in &mut transmit_ring {
+        *descriptor = E1000TxDescriptor::default();
     }
-    *tx_ring = Some(descriptors);
+
+    //for _ in 0..TX_NUM_DESCRIPTORS {
+    //    transmit_ring.push(E1000TxDescriptor::default());
+    //}
+
+    *tx_ring = Some(transmit_ring);
 }
 
 fn print_tx_ring() {
