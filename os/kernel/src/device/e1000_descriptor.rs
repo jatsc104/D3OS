@@ -5,6 +5,7 @@ use spin::Mutex;
 use nolock::queues::mpmc::bounded;
 use alloc::alloc::{GlobalAlloc, Layout, alloc_zeroed};
 use core::ptr;
+use crate::memory;
 
 use alloc::boxed::Box;
 use x86_64::registers;
@@ -59,10 +60,11 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     const E1000_RCTL_RDTMS: u32 = 11 << 8;
     //set loopback for testing - full duplex has to be enabled
     const E1000_RCTL_LBM: u32 = 3 << 6;
+    const E1000_RCTL_UPE: u32 = 1 << 3;
     let clear_mask = !(E1000_RCTL_BSIZE_2048 | E1000_RCTL_RDTMS);
     //write ctrl register
     let rctl = E1000Registers::read_rctl(registers);
-    let settings = (rctl & clear_mask) | E1000_RCTL_BAM | E1000_RCTL_LBM;
+    let settings = (rctl & clear_mask) | E1000_RCTL_BAM | E1000_RCTL_LBM | E1000_RCTL_UPE;
     E1000Registers::write_rctl(registers, settings);
 
 
@@ -71,11 +73,16 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     //let mut receive_ring: ArrayVec<[E1000RxDescriptor; RECEIVE_RING_SIZE]> = ArrayVec::new();
 
     //let mut receive_ring: Vec<E1000RxDescriptor> = Vec::with_capacity(RECEIVE_RING_SIZE);
-    let layout = Layout::from_size_align(RECEIVE_RING_SIZE * core::mem::size_of::<E1000RxDescriptor>(), 16).unwrap();
-    let receive_ring_ptr = unsafe { alloc_zeroed(layout) } as *mut E1000RxDescriptor;
-    if receive_ring_ptr.is_null(){
-        panic!("Failed to allocate memory for receive ring");
-    }
+    //let layout = Layout::from_size_align(RECEIVE_RING_SIZE * core::mem::size_of::<E1000RxDescriptor>(), 16).unwrap();
+    //let receive_ring_ptr = unsafe { alloc_zeroed(layout) } as *mut E1000RxDescriptor;
+    //if receive_ring_ptr.is_null(){
+    //    panic!("Failed to allocate memory for receive ring");
+    //}
+
+    let phys_mem = memory::physical::alloc(1);
+    let phys_addr = phys_mem.start.start_address().as_u64();
+
+    let receive_ring_ptr = phys_addr as *mut E1000RxDescriptor;
 
     //build Vec from pointer - refactoring the rest of the code using the pointer is not worth it
     let mut receive_ring = unsafe {
@@ -89,17 +96,19 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
         //let buffer_addr = Box::into_raw(Box::new(buffer)) as u64;
 
         //let buffer = vec![0u8; BUFFER_SIZE];
-        let mut buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE);
+        //let mut buffer: Vec<u8> = Vec::with_capacity(BUFFER_SIZE);
+        let buffer_mem = memory::physical::alloc(1);
+        let buffer_addr = buffer_mem.start.start_address().as_u64();
         //for _ in 0..BUFFER_SIZE{
         //    buffer.push(0);
         //}
-        buffer.resize(BUFFER_SIZE, 0);  //note that the memory might get realloced to a different address - all address operations should be done after this.
-        let buffer_addr = buffer.as_ptr() as u64;
+        //buffer.resize(BUFFER_SIZE, 0);  //note that the memory might get realloced to a different address - all address operations should be done after this.
+        //let buffer_addr = buffer.as_ptr() as u64;
 
         //Set buffer address in descriptor for card to write to
         descriptor.buffer_addr = buffer_addr;
 
-        let _ = core::mem::ManuallyDrop::new(buffer);
+        let _ = core::mem::ManuallyDrop::new(buffer_mem);
     }
 
     //init each descriptor in the ring
@@ -135,11 +144,11 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     E1000Registers::write_rdbah(registers, (ring_addr >> 32) as u32);
     
     //set length in rdlen
-    E1000Registers::write_rdlen(registers, RECEIVE_RING_SIZE as u32);
+    E1000Registers::write_rdlen(registers, (RECEIVE_RING_SIZE * 16) as u32);
 
     //set head and tail pointers (rdh and rdt)
     E1000Registers::write_rdh(registers, 0);
-    E1000Registers::write_rdt(registers, RECEIVE_RING_SIZE as u32 - 1);
+    E1000Registers::write_rdt(registers, RECEIVE_RING_SIZE as u32);
 
     info!("Receive descriptor ring set up");
     info!("Receive descriptor ring address: {:?}", ring_addr);
@@ -315,7 +324,7 @@ pub fn set_up_tx_desc_ring(registers: &E1000Registers, tx_ring: &'static Mutex<O
     //sizeof(E1000TxDescriptor) should be 16 bytes
     E1000Registers::write_tdlen(registers, (TX_NUM_DESCRIPTORS * core::mem::size_of::<E1000TxDescriptor>()) as u32);
     E1000Registers::write_tdh(registers, 0);
-    E1000Registers::write_tdt(registers, TX_NUM_DESCRIPTORS as u32 - 1);
+    E1000Registers::write_tdt(registers, 0);
 
 //    descriptors
 }
@@ -368,30 +377,32 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
             //this would be a good spot to make room for other threads in a multithreaded environment
         }
         //assign header to seperate descriptor
-        let header = &packet[..header_size];
-        let descriptor = &mut tx_ring[tdt];
-        descriptor.buffer_addr = header.as_ptr() as u64;
-        descriptor.length = header.len() as u16;
-        descriptor.cmd = E1000_TXD_CMD_RS;
-        descriptor.status = 0;
+        //let header = &packet[..header_size];
+        //let descriptor = &mut tx_ring[tdt];
+        //descriptor.buffer_addr = header.as_ptr() as u64;
+        //descriptor.length = header.len() as u16;
+        //descriptor.cmd = E1000_TXD_CMD_RS;
+        //descriptor.status = 0;
         //update tdt
         //tdt = (tdt + 1) % tx_ring.len();
-        print_tx_ring(tx_ring);
+//        print_tx_ring(tx_ring);
         print_tdh(registers);
         print_tdt(registers);
-        E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
+//        E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
         print_tdt(registers);
         print_tdh(registers);
 
+        info!("crashes after writing header to descriptor");
+
         //assign the payload to one or more descriptors - jumbo frames not supported so each packet should be smaller than 4096 bytes
-        let payload = &packet[header_size..];
+        let payload = &packet;
         //calculate number of chunks rounding up
         let num_chunks = (payload.len() + MAX_DESCRIPTOR_SIZE - 1) / MAX_DESCRIPTOR_SIZE;
         for (i, chunk) in payload.chunks(MAX_DESCRIPTOR_SIZE).enumerate(){
             //update tdt
             tdt = E1000Registers::read_tdt(registers) as usize;
             //wait for room in the ring buffer
-            while tdt == tdh{
+            while tdt + 1 + SAFETY_MARGIN == tdh{
             //update tdh - card has responsibility to update tdh
             tdh = E1000Registers::read_tdh(registers) as usize;
             }
@@ -407,6 +418,8 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
             //tdt = (tdt + 1) % tx_ring.len();
             E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring.len()) as u32);
         }
+        info!("crashes after writing payload to descriptor");
+        print_tx_ring(tx_ring);
         //old tdt is set to EOP
         //tx_ring[(tdt)%tx_ring_len].cmd |= E1000_TXD_CMD_EOP;
     }
@@ -414,28 +427,42 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
 
 pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
 
-    let header_size = get_header_size(tx_buffer);
+    //let header_size = get_header_size(tx_buffer);
 
     //placeholders - inject dest and src mac per parameter later
 //    let destination_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56];
 //    let source_mac: [u8; 6] = [0x52, 0x54, 0x00, 0x12, 0x34, 0x57];
 //    let ethertype: [u8; 2] = [0x08, 0x00]; //0x0800 is Ethertype for IPv4
     //combine into one header
-    let header = &tx_buffer.data[..header_size]; 
+    //let header = &tx_buffer.data[..header_size]; 
 
     //MTU = Maximum Transmission Unit - Maximum size of a packet including header
     const MTU: usize = 1500; //limited through ethernet frame size - jumbo frames with 9728 bytes should be supported as well
 
-
+    //packets can actually be just a vector anywhere in memory, since its only used to split up the data
     let mut packets = Vec::new();
     //header gets put into the same packet as the payload here, but gets assigned to a seperate descriptor in tx_connect_buffer_to_descriptors
-    //this ensures each header to have the same lifetime as the payload, as they live in the same Vec
+    //this ensures each header has the same lifetime as the payload, as they live in the same Vec
+    //let header_len = header.len();
     for chunk in tx_buffer.data.chunks(MTU){
-        let mut packet = Vec::new();
+        let packet_mem = memory::physical::alloc(1);
+        let packet_addr = packet_mem.start.start_address().as_u64();
+        let packet_ptr = packet_addr as *mut u8;
+        info!("crashes after allocating packet memory");
+
+        let mut packet = unsafe {
+            Vec::from_raw_parts(packet_ptr, 0, MTU)
+        };
+        info!("crashes after turning packet_ptr into Vec");
+
+        //let mut packet = Vec::new();
+
         //Add Header
-        packet.extend_from_slice(&header);
+        //packet.extend_from_slice(&header);
         //Add Payload
         packet.extend_from_slice(chunk);
+
+        info!("crashes after extending packet");
 //TODO: HEADER GETS RESIZED RIGHT NOW AS WELL - FIX THIS ASAP - resolved?
         //Pad last/header packet to Max size so all packets are same size - helps with debugging
 //        if packet.len() < MTU{
@@ -443,6 +470,8 @@ pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
 //            packet.resize(MTU, 0);
 //        }
         packets.push(packet);
+        info!("crashes after pushing packet");
+
     }
     packets
 }
@@ -551,11 +580,12 @@ fn enqueue_packet(rx_buffer_producer: &bounded::scq::Sender<RxBufferPacket>, pac
 pub fn rx_ring_pop(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers, rx_buffer_producer: &bounded::scq::Sender<RxBufferPacket>){
     let rdh = E1000Registers::read_rdh(registers);
     let rdt = E1000Registers::read_rdt(registers);
+    const RECEIVE_RING_SIZE: u32 = 128;
     
     //check if there are packets to process
     if rdh != rdt{
         const E1000_RX_STATUS_DD: u8 = 1 << 0;
-        let descriptor = &mut receive_ring[rdt as usize];
+        let descriptor = &mut receive_ring[(rdt % RECEIVE_RING_SIZE)  as usize];
         //check if descriptor is ready to be processed
         if descriptor.status & E1000_RX_STATUS_DD != 0 {
             //packet is ready to be processed
