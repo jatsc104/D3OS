@@ -58,6 +58,12 @@ impl InterruptHandler for E1000InterruptHandler{
         //clearing unnecessary - see above
         //self.registers.write_icr(interrupt_cause & !(ICR_TXDW) & !(ICR_TXQE));
 
+        info!("Interrupt cause: {:?}", interrupt_cause);
+
+        if interrupt_cause & ICR_TXDW != 0{
+            info!("Transmit Descriptor Written Back");
+        }
+
         //link status change
         if interrupt_cause & ICR_LSC != 0{
             info!("Link status change");
