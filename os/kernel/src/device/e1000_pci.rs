@@ -55,9 +55,12 @@ pub fn map_mmio_space(pci_bus: &PciBus, e1000_device: &EndpointHeader) -> VirtAd
     if let Bar::Memory32 { address, size, prefetchable:_} = bar0 {
         mmio_address = address as u64;
         mmio_size = size as u64;
+        info!("32 bit mmio address: {:?}", mmio_address);
+        info!("32 bit mmio size: {:?}", mmio_size);
     }else if let Bar::Memory64 { address, size, prefetchable:_} = bar0 {
         mmio_address = address;
         mmio_size = size;
+        info!("64 bit mmio address: {:?}", mmio_address);
     }
     //e1000 can use pmio - not implementing now, maybe later
     else if let Bar::Io {..} = bar0 {
