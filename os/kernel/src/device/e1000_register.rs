@@ -131,15 +131,31 @@ impl E1000Registers{
 
 
 
-        const CTRL_RST: u32 = 1 << 26;
-        self.write_ctrl(CTRL_RST);
+//        const CTRL_RST: u32 = 1 << 26;
+//        self.write_ctrl(CTRL_RST);
         //wait for reset to complete
         //timer for 1 ms
-        Timer::wait(1);
+//        Timer::wait(1);
         //does this work?
-        while self.read_ctrl() & CTRL_RST != 0{
+//        while self.read_ctrl() & CTRL_RST != 0{
             //wait
-        }
+//        }
+
+        const CTRL_ASDE: u32 = 1 << 5;
+        const CTRL_SLU: u32 = 1 << 6;
+        const CTRL_LRST: u32 = 1 << 3;      //set to 0, but should have no effect in internal phy mode
+        const CTRL_PHY_RST: u32 = 1 << 31;  //should be set to 0
+        const CTRL_ILOS: u32 = 1 << 2;      //should be set to 0
+
+        let clear_mask = CTRL_PHY_RST | 
+        CTRL_ILOS | 
+        CTRL_LRST;
+
+        let mut ctrl = self.read_ctrl();
+        ctrl &= !clear_mask;
+        ctrl |= CTRL_ASDE | CTRL_SLU;
+        self.write_ctrl(ctrl);
+
         //config transmit and receive units
 
 
@@ -257,6 +273,29 @@ impl E1000Registers{
         }
     }
 
+    fn write_mdic(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.mdic as *mut u32, value);
+        }
+    }
+
+    fn read_mdic(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.mdic as *const u32)
+        }
+    }
+
+//TODO: implement read_phy
+    fn read_phy(&self){
+        const MDIC_PHYADD :u32 = (1 << 21);
+        const MDIC_OP_WRITE :u32 = (1 << 26);
+        const MDIC_OP_READ :u32 = (2 << 26);
+        const MDIC_R :u32 = (1 << 28);
+        const MDIC_I :u32 = (1 << 29);
+        const MDIC_E :u32 = (1 << 30);
+
+    }
+
     pub fn read_eerd(&self) -> u32{
         unsafe{
             core::ptr::read_volatile(self.eerd as *const u32)
@@ -364,6 +403,11 @@ impl E1000Registers{
             core::ptr::read_volatile(self.rdt as *const u32)
         }
     }
+    pub fn read_rdlen(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.rdlen as *const u32)
+        }
+    }
 
     pub fn write_tdbal(&self, value: u32){
         unsafe{
@@ -375,9 +419,25 @@ impl E1000Registers{
             core::ptr::write_volatile(self.tdbah as *mut u32, value);
         }
     }
+    pub fn read_tdbal(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.tdbal as *const u32)
+        }
+    }
+    pub fn read_tdbah(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.tdbah as *const u32)
+        }
+    }
+
     pub fn write_tdlen(&self, value: u32){
         unsafe{
             core::ptr::write_volatile(self.tdlen as *mut u32, value);
+        }
+    }
+    pub fn read_tdlen(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.tdlen as *const u32)
         }
     }
 
@@ -416,6 +476,12 @@ impl E1000Registers{
     pub fn read_status(&self) -> u32{
         unsafe{
             core::ptr::read_volatile(self.status as *const u32)
+        }
+    }
+
+    pub fn read_status_no_volatile(&self) -> u32{
+        unsafe{
+            core::ptr::read(self.status as *const u32)
         }
     }
 
