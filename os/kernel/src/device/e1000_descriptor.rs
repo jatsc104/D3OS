@@ -18,8 +18,8 @@ use super::e1000_driver::TX_NUM_DESCRIPTORS;
 #[repr(C)]
 #[derive(Debug)]
 pub struct E1000TxDescriptor {
-    buffer_addr: u64,
-    length: u16,
+    pub buffer_addr: u64,   //public for debug purposes, should be private
+    pub length: u16,        //public for debug purposes, should be private
     cso: u8,
     cmd: u8,
     status: u8,
@@ -30,10 +30,10 @@ pub struct E1000TxDescriptor {
 // Define the receive descriptor
 #[repr(C)]
 pub struct E1000RxDescriptor {
-    buffer_addr: u64,
-    length: u16,
+    pub buffer_addr: u64,   //public for debug purposes, should be private
+    pub length: u16,        //public for debug purposes, should be private
     csum: u16,
-    status: u8,
+    pub status: u8,             //public for debug purposes, should be private
     errors: u8,
     special: u16,
 }
@@ -63,9 +63,11 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     const E1000_RCTL_UPE: u32 = 1 << 3;
     let clear_mask = !(E1000_RCTL_BSIZE_2048 | E1000_RCTL_RDTMS);
     //write ctrl register
-    let rctl = E1000Registers::read_rctl(registers);
+    let mut rctl = E1000Registers::read_rctl(registers);
     let settings = (rctl & clear_mask) | E1000_RCTL_BAM | E1000_RCTL_LBM | E1000_RCTL_UPE;
     E1000Registers::write_rctl(registers, settings);
+    rctl = E1000Registers::read_rctl(registers);
+    info!("RCTL: {:032b}", rctl);
 
 
     //allocate memory for receive descriptor ring
@@ -110,6 +112,22 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
 
         let _ = core::mem::ManuallyDrop::new(buffer_mem);
     }
+
+    //let mut i = 0;
+    //add data to first descriptor in receive ring
+    //for descriptor in receive_ring.iter_mut(){
+    //    if i == 0{
+    //        //copy data to descriptor.buffer_address
+    //        let data = [0b01010110; 64];
+    //        unsafe{
+    //            ptr::copy_nonoverlapping(data.as_ptr(), descriptor.buffer_addr as *mut u8, 64);
+    //        }
+    //        descriptor.length = 64;
+    //        descriptor.status = 1;
+    //        descriptor.errors = 0;
+    //        i += 1;
+    //    }
+    //}
 
     //init each descriptor in the ring
     //for descriptor in receive_ring.iter_mut(){
@@ -357,11 +375,25 @@ pub fn tx_conncect_buffer_to_descriptors_vecless(tx_ring: &mut Vec<E1000TxDescri
 
     //skip checks for now
 
+    //read and print content of packet
+//    let packet_ptr = packet as *const u8;
+//    let packet_slice = unsafe { core::slice::from_raw_parts(packet_ptr, tx_buffer.size() as usize) };
+//    info!("Packet: {:?}", packet_slice);
+
     let descriptor = &mut tx_ring[tdt];
+//    descriptor.buffer_addr = 0 as u64;
     descriptor.buffer_addr = packet as u64;
     descriptor.length = tx_buffer.size();
     descriptor.cmd = 0x1 | 0x8;
     descriptor.status = 0;
+
+    //read and print content of descriptor_address
+//    let descriptor_ptr = descriptor.buffer_addr as *const u8;
+//    let descriptor_slice = unsafe { core::slice::from_raw_parts(descriptor_ptr, tx_buffer.size() as usize) };
+//    info!("Descriptor: {:?}", descriptor_slice);
+
+
+    print_tx_ring(tx_ring);
 
     E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring_len) as u32);
 
