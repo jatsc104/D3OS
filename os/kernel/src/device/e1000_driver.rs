@@ -97,6 +97,9 @@ impl IntelE1000Device{
         let mmio_adress = map_mmio_space(pci_bus, e1000_device);
         info!("MMIO address: {:?}", mmio_adress.as_u64());
         let registers = E1000Registers::new(mmio_adress);
+        let status = registers.read_status();
+        info!("Status: {:?}", status);
+        info!("Status: {:032b}", status);
         registers.init_config_e1000();
         
         
@@ -134,8 +137,12 @@ impl IntelE1000Device{
         enable_receive(&registers);
         enable_transmit(&registers);
 
+        let status = registers.read_status_no_volatile();
+        info!("xStatus: {:?}", status);
+        info!("xStatus: {:032b}", status);
+
         let ctrl_reg = registers.read_ctrl();
-        info!("ctrl reg: {:b}", ctrl_reg);
+        info!("ctrl reg: {:032b}", ctrl_reg);
 
         IntelE1000Device{
             //interrupt_line,
@@ -206,7 +213,7 @@ pub fn e1000_run(){
     fetch_rx_data(&mut rx_data);
     info!("Received data: {:?}", rx_data);
     let status = device.registers.read_status();
-    info!("Status: {:b}", status);
+    info!("Status: {:032b}", status);
 
 }
 
@@ -235,7 +242,7 @@ impl EthernetHeader{
             ethertype,
         }
     }
-    fn to_bytes(&self) -> [u8; 14]{
+    pub fn to_bytes(&self) -> [u8; 14]{
         let mut header = [0u8; 14];
         header[0..6].copy_from_slice(&self.destination_mac);
         header[6..12].copy_from_slice(&self.source_mac);
@@ -244,6 +251,6 @@ impl EthernetHeader{
     }
 }
 
-fn build_ethernet_header(mac: [u8; 6]) -> EthernetHeader{
+pub fn build_ethernet_header(mac: [u8; 6]) -> EthernetHeader{
     EthernetHeader::new([0xff, 0xff, 0xff, 0xff, 0xff, 0xff], mac, 0x0800)
 }
