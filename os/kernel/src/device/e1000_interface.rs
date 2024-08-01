@@ -39,7 +39,6 @@ impl Clone for NetworkProtocol{
 
 pub fn transmit_test(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE1000Device) {
     //caller has to ensure that the data + the corresponding headers is not larger than the MTU = 1500 bytes
-    //but if it is, data gets divided into multiple packets by the driver anyways
 
     let tx_buffer = TxBuffer::new(data, protocol);
     let mut tx_ring_lock = get_tx_ring().lock();
