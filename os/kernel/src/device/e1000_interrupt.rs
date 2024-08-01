@@ -7,6 +7,7 @@ use nolock::queues::mpmc::bounded;
 //use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::device::e1000_descriptor::{retrieve_packets, rx_ring_pop, E1000RxDescriptor, RxBufferPacket};
+use crate::device::e1000_test::{fake_transmit, fake_transmit_lbm};
 use crate::interrupt::interrupt_handler::InterruptHandler;
 use crate::interrupt::interrupt_dispatcher::{InterruptVector};
 use crate::{apic, interrupt_dispatcher};
@@ -62,6 +63,9 @@ impl InterruptHandler for E1000InterruptHandler{
 
         if interrupt_cause & ICR_TXDW != 0{
             info!("Transmit Descriptor Written Back");
+            //fake loopback mode
+            fake_transmit_lbm(&mut self.rx_ring, &self.registers);
+            rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
         }
 
         //link status change
