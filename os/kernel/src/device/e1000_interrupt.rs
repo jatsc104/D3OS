@@ -99,16 +99,27 @@ impl InterruptHandler for E1000InterruptHandler{
             info!("Interrupt handled");
         }
 
+        //do not use RDTR to set the timer, rather use ITR - as suggested by the manual (page 308)
         if interrupt_cause & (ICR_RXT0) != 0{
             //single packet received - data races between interrupt and new packet possible? maybe two packets received at the "same" time?
             //data race technically handled by RXDMT0 and RXO, regular clearing of packets might be a good idea
             //pop a sinlgle packet from rx_desc_ring. or actually loop starting at the tail up to head-1
 
+            let mut rdt = self.registers.read_rdt();
+            let mut rdh = self.registers.read_rdh();
+            info!("RDT: {:?}, RDH: {:?}", rdt, rdh);
             //rx_ring_pop(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
             //let mut packets = RECEIVED_BUFFER.lock();
             rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
             //RX_NEW_DATA.store(true, Ordering::SeqCst);
             info!("Packet received");
+
+            rdt = self.registers.read_rdt();
+            rdh = self.registers.read_rdh();
+            info!("RDT: {:?}, RDH: {:?}", rdt, rdh);
+
+            let second_icr = self.registers.read_icr();
+            info!("Second ICR: {:?}", second_icr);
 
         }
 
