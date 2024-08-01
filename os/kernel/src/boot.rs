@@ -8,7 +8,7 @@
    ╚═════════════════════════════════════════════════════════════════════════╝
 */
 
-use crate::device::e1000_driver::e1000_run;
+use crate::device::e1000_driver::{e1000_large_run, e1000_run};
 use crate::interrupt::interrupt_dispatcher;
 use crate::syscall::syscall_dispatcher;
 use crate::process::thread::Thread;
@@ -196,6 +196,7 @@ pub extern "C" fn start(multiboot2_magic: u32, multiboot2_addr: *const BootInfor
     // Initialize E1000 network device
     init_e1000();
     e1000_run();
+    e1000_large_run();
 
     // Load initial ramdisk
     let initrd_tag = multiboot.module_tags()
