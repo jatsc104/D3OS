@@ -231,9 +231,31 @@ pub fn e1000_large_run(){
     let ipv4_header: [u8; 60] = [0b11111111; 60];
     //insert fake TCP header
     let tcp_header: [u8; 60] = [0b00000000; 60]; //change to 60 bytes for different test scenario
+
+    // IP header
+    let ip_header: [u8; 20] = [
+        0x45, // Version (4) + IP header length (5)
+        0x00, // Type of service 
+        0x00, 0x6c, // Total length 
+        0x00, 0x00, // Identification
+        0x40, 0x00, // Flags + Fragment offset 
+        0x40, // TTL
+        0x11, // Protocol (UDP)
+        0x00, 0x00, // Header checksum (placeholder)
+        0x7f, 0x00, 0x00, 0x01, // Source IP (localhost)
+        0x7f, 0x00, 0x00, 0x01, // Destination IP (localhost)
+    ];
+
+    // UDP header
+    let udp_header: [u8; 8] = [
+        0x04, 0xd4, // Source port
+        0x04, 0xd3, // Destination port
+        0x00, 0x58, // Length
+        0x00, 0x00, // Checksum (placeholder)
+    ];
     //add both headers to data_vec
-    data_vec.extend_from_slice(&ipv4_header);
-    data_vec.extend_from_slice(&tcp_header);
+    data_vec.extend_from_slice(&ip_header);
+    data_vec.extend_from_slice(&udp_header);
 
     let mut data_vec_2 = data_vec.clone();
     //add payload
@@ -256,6 +278,10 @@ pub fn e1000_large_run(){
     //let mut rx_data = Vec::new();
     //fetch_rx_data(&mut rx_data);
     //info!("Received data: {:?}", rx_data);
+    Timer::wait(25000);
+    let mut rx_data = Vec::new();
+    fetch_rx_data(&mut rx_data);
+    info!("Received data {:?}", rx_data);
 
 }
 
