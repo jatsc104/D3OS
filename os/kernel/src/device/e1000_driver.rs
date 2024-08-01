@@ -29,6 +29,7 @@ use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxD
 
 pub const TX_NUM_DESCRIPTORS: usize = 64;
 pub const RX_NUM_DESCRIPTORS: usize = 128;
+pub const MTU: usize = 1522;
 
 static TX_RING: Mutex<Option<Vec<E1000TxDescriptor>>> = Mutex::new(None);
 pub fn get_tx_ring() -> &'static Mutex<Option<Vec<E1000TxDescriptor>>>{
@@ -204,16 +205,57 @@ pub fn e1000_run(){
     let ethernet_header = build_ethernet_header(mac);
     let data_array: [u8; 64] = [0b01010101; 64];
     let mut data_vec = Vec::from(ethernet_header.to_bytes().to_vec());
+    //IPv4 header is missing here
     data_vec.extend_from_slice(&data_array);
     transmit_test(data_vec, NetworkProtocol::Ethernet, device);
     info!("Data sent");
-    Timer::wait(5000);
+//    Timer::wait(5000);
     let mut rx_data = Vec::new();
     fetch_rx_data(&mut rx_data);
     fetch_rx_data(&mut rx_data);
     info!("Received data: {:?}", rx_data);
     let status = device.registers.read_status();
     info!("Status: {:032b}", status);
+
+}
+
+pub fn e1000_large_run(){
+    let device = e1000_device();
+    let mac = device.mac_address;
+    let ethernet_header = build_ethernet_header(mac);
+    //worst case header size 142 bytes, 1522 (Maximum standard frame size) - 142 = 1380 bytes payload
+    let data_array: [u8; 80] = [0b01010101; 80];
+    let data_array_2: [u8; 80] = [0b10101010; 80];
+    let mut data_vec = Vec::from(ethernet_header.to_bytes().to_vec());
+    //insert fake IPv4 header
+    let ipv4_header: [u8; 60] = [0b11111111; 60];
+    //insert fake TCP header
+    let tcp_header: [u8; 60] = [0b00000000; 60]; //change to 60 bytes for different test scenario
+    //add both headers to data_vec
+    data_vec.extend_from_slice(&ipv4_header);
+    data_vec.extend_from_slice(&tcp_header);
+
+    let mut data_vec_2 = data_vec.clone();
+    //add payload
+    data_vec.extend_from_slice(&data_array);
+    data_vec_2.extend_from_slice(&data_array_2);
+    for i in 0..140{
+        info!("Transmit number: {:?}", i);
+        if(i % 2 == 0){
+            transmit_test(data_vec.clone(), NetworkProtocol::Ethernet, device);
+        }else{
+            transmit_test(data_vec_2.clone(), NetworkProtocol::Ethernet, device);
+        }
+        info!("Data sent");
+        let mut rx_data = Vec::new();
+        fetch_rx_data(&mut rx_data);
+        info!("Received data: {:?}", rx_data);
+    }
+    //transmit_test(data_vec, NetworkProtocol::Ethernet, device);
+    //info!("Data sent");
+    //let mut rx_data = Vec::new();
+    //fetch_rx_data(&mut rx_data);
+    //info!("Received data: {:?}", rx_data);
 
 }
 
