@@ -64,8 +64,8 @@ impl InterruptHandler for E1000InterruptHandler{
         if interrupt_cause & ICR_TXDW != 0{
             info!("Transmit Descriptor Written Back");
             //fake loopback mode
-            fake_transmit_lbm(&mut self.rx_ring, &self.registers);
-            rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
+            //fake_transmit_lbm(&mut self.rx_ring, &self.registers);
+            //rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
         }
 
         //link status change
@@ -113,8 +113,8 @@ impl InterruptHandler for E1000InterruptHandler{
         }
 
         //Test - subject to change
-        if interrupt_cause == 3{
-            rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
+        if interrupt_cause == 0{
+            //rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
         }
 
         //UNHANDLED INTERRUPTS
