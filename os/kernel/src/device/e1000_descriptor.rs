@@ -1,11 +1,15 @@
 use alloc::vec::{self, Vec};
 use log::info;
+use x86_64::structures::paging::PhysFrame;
+use x86_64::structures::paging::page::Size4KiB;
+use x86_64::structures::paging::frame::PhysFrameRange;
 use core::mem::MaybeUninit;
 use spin::Mutex;
 use nolock::queues::mpmc::bounded;
 use alloc::alloc::{GlobalAlloc, Layout, alloc_zeroed};
 use core::ptr;
 use crate::memory;
+use crate::PhysAddr;
 
 use alloc::boxed::Box;
 use x86_64::registers;
@@ -13,6 +17,7 @@ use x86_64::registers;
 use super::e1000_register::E1000Registers;//::{write_rdbah, write_rdbal, write_rdlen, write_rdh, write_rdt};
 use super::e1000_interface::NetworkProtocol;
 use super::e1000_driver::TX_NUM_DESCRIPTORS;
+use super::e1000_driver::MTU;
 
 // Define the transmit descriptor
 #[repr(C)]
@@ -40,7 +45,7 @@ pub struct E1000RxDescriptor {
 
 pub struct RxBufferPacket{
     pub length: usize,
-    pub data: [u8; 1500],
+    pub data: [u8; MTU],
 }
 
 pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>{
@@ -366,39 +371,73 @@ fn print_tdh(registers: &E1000Registers){
 }
 
 pub fn tx_conncect_buffer_to_descriptors_vecless(tx_ring: &mut Vec<E1000TxDescriptor>, tx_buffer: &TxBuffer, registers: &E1000Registers) {
-    let packet = create_packet_vecless(tx_buffer);
+    let mut packets = create_packet_vecless(tx_buffer);
 
-    let mut tdt = E1000Registers::read_tdt(registers) as usize;
-    let mut tdh = E1000Registers::read_tdh(registers) as usize;
+    //SAFETY_MARGIN is the amount of added descriptors until tdt is changed f.e. tdt += 5 -> S_M = 5
+    const SAFETY_MARGIN: usize = 1;
+    //now assign packets to descriptors
+    //assign 1 packet to 1 descriptor, since descriptor sizes are limited to maximum Packet size only (intel docu page 35, top)
+    for tx_packet in packets.iter_mut(){
 
-    let tx_ring_len = tx_ring.len();
+        let packet = tx_packet.packet;
 
-    //skip checks for now
+        let mut tdt = E1000Registers::read_tdt(registers) as usize;
+        let mut tdh = E1000Registers::read_tdh(registers) as usize;
 
-    //read and print content of packet
-//    let packet_ptr = packet as *const u8;
-//    let packet_slice = unsafe { core::slice::from_raw_parts(packet_ptr, tx_buffer.size() as usize) };
-//    info!("Packet: {:?}", packet_slice);
+        let tx_ring_len = tx_ring.len();
 
-    let descriptor = &mut tx_ring[tdt];
-//    descriptor.buffer_addr = 0 as u64;
-    descriptor.buffer_addr = packet as u64;
-    descriptor.length = tx_buffer.size();
-    descriptor.cmd = 0x1 | 0x8;
-    descriptor.status = 0;
-
-    //read and print content of descriptor_address
-//    let descriptor_ptr = descriptor.buffer_addr as *const u8;
-//    let descriptor_slice = unsafe { core::slice::from_raw_parts(descriptor_ptr, tx_buffer.size() as usize) };
-//    info!("Descriptor: {:?}", descriptor_slice);
+        //skip other checks for now
+        //check for room in descriptor ring
+        while(tdt + 1 + SAFETY_MARGIN)%tx_ring_len == tdh{
+            //update tdh - card has responsibility to update tdh
+            tdh = E1000Registers::read_tdh(registers) as usize;
+            //this would be a good spot to make room for other threads in a multithreaded environment
+        }
 
 
-    print_tx_ring(tx_ring);
+        //read and print content of packet
+    //    let packet_ptr = packet as *const u8;
+    //    let packet_slice = unsafe { core::slice::from_raw_parts(packet_ptr, tx_buffer.size() as usize) };
+    //    info!("Packet: {:?}", packet_slice);
 
-    E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring_len) as u32);
+        let descriptor = &mut tx_ring[tdt];
 
-    print_tx_ring(tx_ring);
-    info!("crash indicator");
+        //if descriptor has been used before - dealloc buffer
+        if descriptor.buffer_addr != 0{
+            let num_pages = (descriptor.length + 4095) / 4096;
+            let start_frame = PhysFrame::<Size4KiB>::containing_address(PhysAddr::new(descriptor.buffer_addr));
+            let end_frame = PhysFrame::<Size4KiB>::containing_address(PhysAddr::new((descriptor.buffer_addr + (num_pages as u64 * 4096))));
+            let frame_range = PhysFrameRange{start: start_frame, end: end_frame};
+            unsafe {
+                memory::physical::free(frame_range);
+            }
+            //reset fields of descriptor
+            descriptor.buffer_addr = 0;
+            descriptor.length = 0;
+            descriptor.cmd = 0;
+            descriptor.status = 0;
+        }
+
+    //    descriptor.buffer_addr = 0 as u64;
+        descriptor.buffer_addr = packet as u64;
+        descriptor.length = tx_packet.length as u16;
+        descriptor.cmd = 0x1 | 0x8;
+        descriptor.status = 0;
+
+        //read and print content of descriptor_address
+    //    let descriptor_ptr = descriptor.buffer_addr as *const u8;
+    //    let descriptor_slice = unsafe { core::slice::from_raw_parts(descriptor_ptr, tx_buffer.size() as usize) };
+    //    info!("Descriptor: {:?}", descriptor_slice);
+
+
+        //print_tx_ring(tx_ring);
+
+        E1000Registers::write_tdt(registers, ((tdt + 1) % tx_ring_len) as u32);
+
+        //print_tx_ring(tx_ring);
+        //info!("crash indicator");
+    }
+
 
 
 }
@@ -481,18 +520,38 @@ pub fn tx_conncect_buffer_to_descriptors(tx_ring: &mut Vec<E1000TxDescriptor>, t
     }
 }
 
-pub fn create_packet_vecless(tx_buffer: &TxBuffer) -> *mut u8{
-    const MTU: usize = 1500;
+struct TxPacketWrapper{
+    packet: *mut u8,
+    length: usize,
+}
 
-    let packets_mem = memory::physical::alloc(((tx_buffer.size()/4096) +1) as usize);
-    let packets_addr = packets_mem.start.start_address().as_u64();
-    let packets_ptr = packets_addr as *mut u8;
+pub fn create_packet_vecless(tx_buffer: &TxBuffer) -> Vec<TxPacketWrapper>{
+    //max packet size is 16288 bytes (docu page 35)
+    const MTU: usize = 1500;    //should be done by network stack anyways
+    let mut  packets: Vec<TxPacketWrapper> = Vec::new();
+
+    for chunk in tx_buffer.data.chunks(16288) {
+        let packet_mem = memory::physical::alloc((chunk.len() / 4096) + 1);
+        let packet_addr = packet_mem.start.start_address().as_u64();
+        let packet_ptr = packet_addr as *mut u8;
+        unsafe {
+            ptr::copy_nonoverlapping(chunk.as_ptr(), packet_ptr, chunk.len());
+        }
+        let tx_packet = TxPacketWrapper{
+            packet: packet_ptr,
+            length: chunk.len(),
+        };
+        packets.push(tx_packet);
+    }
+    //let packets_mem = memory::physical::alloc(((tx_buffer.size()/4096) +1) as usize);
+    //let packets_addr = packets_mem.start.start_address().as_u64();
+    //let packets_ptr = packets_addr as *mut u8;
 
     //copy tx_buffer data to packets
-    unsafe {
-        ptr::copy_nonoverlapping(tx_buffer.address() as *const u8, packets_ptr, tx_buffer.size() as usize);
-    }
-    packets_ptr
+    //unsafe {
+    //    ptr::copy_nonoverlapping(tx_buffer.address() as *const u8, packets_ptr, tx_buffer.size() as usize);
+    //}
+    packets
 }
 
 pub fn create_packets(tx_buffer: &TxBuffer) -> Vec<Vec<u8>>{
@@ -628,9 +687,10 @@ pub fn retrieve_packets(receive_ring: &mut Vec<E1000RxDescriptor>, registers: &E
 
 fn enqueue_packet(rx_buffer_producer: &bounded::scq::Sender<RxBufferPacket>, packet_data: &[u8]){
     //using the struct with a fixed size to avoid needing to serialise the data.
+//    const MTU: usize = 1522;
     let mut packet = RxBufferPacket{
         length: packet_data.len(),
-        data: [0; 1500],
+        data: [0; MTU],
     };
     packet.data[..packet_data.len()].copy_from_slice(packet_data);
     //dont call expect here, since it would panic if the buffer is full
