@@ -38,6 +38,7 @@ pub struct E1000Registers{
     icr:u64,    //interrupt cause read register
     ims:u64,    //interrupt mask set/read register
     imc:u64,    //interrupt mask clear register
+    rdtr:u64,   //receive delay timer
 
     //operation related registers
     ral:u64,    //receive address low
@@ -71,6 +72,7 @@ impl Clone for E1000Registers {
             icr: self.icr,
             ims: self.ims,
             imc: self.imc,
+            rdtr: self.rdtr,
             ral: self.ral,
             rah: self.rah,
         }
@@ -115,6 +117,7 @@ impl E1000Registers{
             icr: mmio_address_u64 + 0x00C0,
             ims: mmio_address_u64 + 0x0D0,
             imc: mmio_address_u64 + 0x0D8,
+            rdtr: mmio_address_u64 + 0x2820,
 
             //operation related registers
             ral: mmio_address_u64 + 0x05400,
@@ -470,6 +473,17 @@ impl E1000Registers{
     pub fn write_icr(&self, value: u32){
         unsafe{
             core::ptr::write_volatile(self.icr as *mut u32, value);
+        }
+    }
+
+    pub fn write_rdtr(&self, value: u32){
+        unsafe{
+            core::ptr::write_volatile(self.rdtr as *mut u32, value);
+        }
+    }
+    pub fn read_rdtr(&self) -> u32{
+        unsafe{
+            core::ptr::read_volatile(self.rdtr as *const u32)
         }
     }
 

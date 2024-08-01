@@ -74,6 +74,11 @@ pub fn set_up_rx_desc_ring(registers: &E1000Registers) -> Vec<E1000RxDescriptor>
     rctl = E1000Registers::read_rctl(registers);
     info!("RCTL: {:032b}", rctl);
 
+    let mut rdtr = E1000Registers::read_rdtr(registers);    //receive delay timer
+    rdtr = rdtr | 0x00000000;   //set to 0 for now - should trigger an interrupt immediately after packet is received
+    E1000Registers::write_rdtr(registers, rdtr);
+    //Note: if changed to ANY other value than 0, change the interrupt handler to handle multiple packets when RXT0 is set
+
 
     //allocate memory for receive descriptor ring
     //let mut receive_ring: Box<[E1000RxDescriptor]> = vec![E1000RxDescriptor::default(); RECEIVE_RING_SIZE].into_boxed_slice();
