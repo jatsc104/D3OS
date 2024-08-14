@@ -4,7 +4,6 @@ use log::info;
 use pci_types::InterruptLine;
 use nolock::queues::mpmc::bounded;
 
-//use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::device::e1000_descriptor::{retrieve_packets, rx_ring_pop, E1000RxDescriptor, RxBufferPacket};
 use crate::device::e1000_test::{fake_transmit, fake_transmit_lbm};
@@ -13,13 +12,10 @@ use crate::interrupt::interrupt_dispatcher::{InterruptVector};
 use crate::{apic, interrupt_dispatcher};
 use crate::device::e1000_register::E1000Registers;
 use crate::device::e1000_driver::{IntelE1000Device, RxBufferVecToPtr, RxRingVecToPtr};
-//use crate::device::e1000_driver::{RX_NEW_DATA, RECEIVED_BUFFER};
-//use crate::alloc::rc::Rc;
 
 struct E1000InterruptHandler{
     registers: E1000Registers,
     rx_ring: Vec<E1000RxDescriptor>,
-    //rx_buffer: Vec<Vec<u8>>,
     rx_buffer_producer: bounded::scq::Sender<RxBufferPacket>,
 
 }
@@ -30,7 +26,6 @@ impl E1000InterruptHandler{
         E1000InterruptHandler{
             registers,
             rx_ring: rx_desc_ring,
-            //rx_buffer: received_buffer,
             rx_buffer_producer,
         }
     }
@@ -46,7 +41,6 @@ impl InterruptHandler for E1000InterruptHandler{
         //read interrupt cause register
         let interrupt_cause = self.registers.read_icr();
 
-        //clear transmit related interrupts for now - Transmit Descriptor Written Back (bit 0) and Transmit Queue Empty (bit 1)
         const ICR_TXDW: u32 = 1 << 0;
         const ICR_TXQE: u32 = 1 << 1;
         const ICR_LSC: u32 = 1 << 2;
@@ -56,8 +50,6 @@ impl InterruptHandler for E1000InterruptHandler{
         const ICR_RXO: u32 = 1 << 6;
         const ICR_RXT0: u32 = 1 << 7;
         //bit 8 is reserved
-        //clearing unnecessary - see above
-        //self.registers.write_icr(interrupt_cause & !(ICR_TXDW) & !(ICR_TXQE));
 
         info!("Interrupt cause: {:?}", interrupt_cause);
 
@@ -90,11 +82,7 @@ impl InterruptHandler for E1000InterruptHandler{
         if interrupt_cause & (ICR_RXDMT0 | ICR_RXO) != 0{
             info!("Receive Descriptor Minimum Threshold Reached or Receive Overrun");
 
-            //retrieve_packets(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
-            //let packets = RECEIVED_BUFFER.lock();
             retrieve_packets(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
-            //more relaxed forms of ordering could lead to race conditions - i think
-            //RX_NEW_DATA.store(true, Ordering::SeqCst);
 
             info!("Interrupt handled");
         }
@@ -109,10 +97,7 @@ impl InterruptHandler for E1000InterruptHandler{
             let mut rdt = self.registers.read_rdt();
             let mut rdh = self.registers.read_rdh();
             info!("RDT: {:?}, RDH: {:?}", rdt, rdh);
-            //rx_ring_pop(&mut self.rx_ring, &self.registers, &mut self.rx_buffer);
-            //let mut packets = RECEIVED_BUFFER.lock();
             rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
-            //RX_NEW_DATA.store(true, Ordering::SeqCst);
             info!("Packet received");
 
             rdt = self.registers.read_rdt();
@@ -126,7 +111,6 @@ impl InterruptHandler for E1000InterruptHandler{
 
         //Test - subject to change
         if interrupt_cause == 0{
-            //rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
         }
 
         //UNHANDLED INTERRUPTS

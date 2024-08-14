@@ -1,31 +1,22 @@
 use core::alloc::Layout;
 
 use alloc::alloc::alloc_zeroed;
-//use acpi::platform::interrupt;
 use alloc::vec::Vec;
 use log::info;
 use spin::Mutex;
 use nolock::queues::mpmc::bounded;
 
-//use core::sync::atomic::AtomicBool;
 
 use crate::device::e1000_descriptor::RxBufferPacket;
 use crate::device::e1000_interface::transmit_test;
 use crate::device::pit::Timer;
 use crate::{e1000_device, memory, pci_bus};
 use super::e1000_interface::{transmit, receive_data, NetworkProtocol};
-//use pci_types::{EndpointHeader, InterruptLine};
 use super::e1000_interrupt::{map_irq_to_vector, enable_interrupts};
 use super::e1000_register::E1000Registers;
 use super::e1000_pci::{enable_device, get_e1000_device, get_interrupt_line, map_mmio_space};
 use super::e1000_descriptor::{set_up_rx_desc_ring, set_up_tx_desc_ring, E1000RxDescriptor, E1000TxDescriptor, enable_receive, enable_transmit};
-//use crate::alloc::rc::Rc;
 
-//these variables are necessary because of the lack of Arc
-//it can be argued that these global variables are "okay" because both need to exist for the entire lifetime of the driver, which is likely the lifetime of the whole system
-//putting them in a data structure like IntelE1000Device sadly does not work, since i also need two mutable refenerences to each of them - producer and consumer
-//pub static RX_NEW_DATA: AtomicBool = AtomicBool::new(false);
-//pub static RECEIVED_BUFFER: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
 
 pub const TX_NUM_DESCRIPTORS: usize = 64;
 pub const RX_NUM_DESCRIPTORS: usize = 128;
@@ -72,25 +63,22 @@ impl RxBufferVecToPtr{
     }
 }
 
+///Contains all necessary information to interact with the Intel E1000 device
 pub struct IntelE1000Device{
-    //maybe that name isnt that fitting anymore, since i only have two of five fields belonging to the card left
-    //pub interrupt_line: InterruptLine,
     pub registers: E1000Registers,
-    //pub received_buffer: Vec<Vec<u8>>,
-    //pub rx_desc_ring: Vec<E1000RxDescriptor>,
-    //pub tx_desc_ring: Vec<E1000TxDescriptor>,
     pub mac_address: [u8; 6],
     pub rx_buffer_consumer: bounded::scq::Receiver<RxBufferPacket>,
 }
 
 impl IntelE1000Device{
 
+    ///Initializes the NIC and returns a new IntelE1000Device, which is used to interact with the driver
     pub fn new() -> Self{
         let pci_bus = pci_bus();
 
         let e1000_device = get_e1000_device(pci_bus);
         enable_device(e1000_device, pci_bus);
-    //TODO: do rest of interrupt later
+
         let interrupt_line = get_interrupt_line(pci_bus, e1000_device);
         info!("Interrupt line: {}", interrupt_line);
         
@@ -106,7 +94,6 @@ impl IntelE1000Device{
         
         //set up descriptor rings
         let rx_desc_ring = set_up_rx_desc_ring(&registers);
-        //let tx_desc_ring = set_up_tx_desc_ring(&registers);
         initialize_tx_ring();
         set_up_tx_desc_ring(&registers, get_tx_ring());
         //get mac address
@@ -117,22 +104,13 @@ impl IntelE1000Device{
         //for now, use a bounded queue to get around having multiple mutable references to the buffer
         //mutable references would have to be synchronized, but since the producer end is passed to the interrupt handler,
         //which deadlocks if it fails to instantly obtain the spinlock, i cannot synchronize the producer end
-        //RX_NUM_DESCRIPTORS * 1500 as 1500 is the MTU should be enough to hold at least one time the rx ring.
         let (rx_buffer_consumer, rx_buffer_producer) = bounded::scq::queue::<RxBufferPacket>(RX_NUM_DESCRIPTORS);
-        //let received_buffer = Vec::new();
 
-        //if possible, change the following using Rc or Arc - data has to be mutable, that is the problem
-        //since this data is assigned to the interrupthandler, it should not get dropped
-        //right now, prevent double instances of mut pointers to rx_ring and rx_buffer by only having them in the interrupt handler - hopefully this will suffice
-        //else, think about injecting these into map_irq_to_vector
-        //let rx_ring_ptr = RxRingVecToPtr::new(&rx_desc_ring);
-        //let rx_buffer_ptr = RxBufferVecToPtr::new(&received_buffer);
         
         //also registers interrupt handler and configures apic
         map_irq_to_vector(interrupt_line, registers.clone(), rx_desc_ring, rx_buffer_producer);
         enable_interrupts(&registers);
 
-        //print_tx_ring();
         
         //enable receive and transmit units
         enable_receive(&registers);
@@ -146,11 +124,7 @@ impl IntelE1000Device{
         info!("ctrl reg: {:032b}", ctrl_reg);
 
         IntelE1000Device{
-            //interrupt_line,
             registers,
-            //received_buffer: received_buffer,
-            //rx_desc_ring,
-            //tx_desc_ring,
             mac_address,
             rx_buffer_consumer,
         }
@@ -159,17 +133,12 @@ impl IntelE1000Device{
     }
 }
 
+///Initializes the transmit ring by allocating memory usable by the NIC for the descriptors and setting them to default values
 fn initialize_tx_ring() {
     let mut tx_ring = get_tx_ring().lock();
-    //let layout = Layout::from_size_align(TX_NUM_DESCRIPTORS * core::mem::size_of::<E1000TxDescriptor>(), 16).unwrap();
-    //let transmit_ring_ptr = unsafe { alloc_zeroed(layout) } as *mut E1000TxDescriptor;
-    //if transmit_ring_ptr.is_null() {
-    //    panic!("Failed to allocate memory for transmit ring");
-    //}
 
     let phys_mem = memory::physical::alloc(1);
     let phys_addr = phys_mem.start.start_address().as_u64();
-    //let addr_bool = phys_addr.is_aligned(16);
 
     let transmit_ring_ptr = phys_addr as *mut E1000TxDescriptor;
 
@@ -184,13 +153,11 @@ fn initialize_tx_ring() {
         *descriptor = E1000TxDescriptor::default();
     }
 
-    //for _ in 0..TX_NUM_DESCRIPTORS {
-    //    transmit_ring.push(E1000TxDescriptor::default());
-    //}
 
     *tx_ring = Some(transmit_ring);
 }
 
+///This function is only intended for debug purposes
 fn print_tx_ring() {
     let binding = get_tx_ring().lock();
     let tx_ring = binding.as_ref().unwrap();
@@ -199,19 +166,20 @@ fn print_tx_ring() {
     }
 }
 
+///Test function to check basic functionality of the driver
 pub fn e1000_run(){
     let device = e1000_device();
     let mac = device.mac_address;
     let ethernet_header = build_ethernet_header(mac);
     let data_array: [u8; 64] = [0b01010101; 64];
     let mut data_vec = Vec::from(ethernet_header.to_bytes().to_vec());
-    //IPv4 header is missing here
+
     data_vec.extend_from_slice(&data_array);
     transmit_test(data_vec, NetworkProtocol::Ethernet, device);
     info!("Data sent");
-//    Timer::wait(5000);
+
     let mut rx_data = Vec::new();
-//    fetch_rx_data(&mut rx_data);
+
     fetch_rx_data(&mut rx_data);
     info!("Received data: {:?}", rx_data);
     let status = device.registers.read_status();
@@ -219,6 +187,7 @@ pub fn e1000_run(){
 
 }
 
+///Test function to check correct implementation of continuous operation of the driver
 pub fn e1000_large_run(){
     let device = e1000_device();
     let mac = device.mac_address;
@@ -270,22 +239,19 @@ pub fn e1000_large_run(){
         }
         //info!("Data sent");
         let mut rx_data = Vec::new();
+        //check for data from fake_lbm
         fetch_rx_data(&mut rx_data);
         //info!("Received data: {:?}", rx_data);
     }
-    //transmit_test(data_vec, NetworkProtocol::Ethernet, device);
-    //info!("Data sent");
-    //let mut rx_data = Vec::new();
-    //fetch_rx_data(&mut rx_data);
-    //info!("Received data: {:?}", rx_data);
-    //Timer::wait(5000);
     let mut rx_data = Vec::new();
+    //check for data sent by netcat
     fetch_rx_data(&mut rx_data);
     fetch_rx_data(&mut rx_data);
     info!("Received data {:?}", rx_data);
 
 }
 
+///Fetches data from the receive buffer and appends it to the provided Vec
 fn fetch_rx_data(rx_data: &mut Vec<u8>){
     let device = e1000_device();
     let received_data = receive_data(&device);
@@ -297,6 +263,7 @@ fn fetch_rx_data(rx_data: &mut Vec<u8>){
     }
 }
 
+///While used in Test functions, intended for future features
 struct EthernetHeader{
     destination_mac: [u8; 6],
     source_mac: [u8; 6],

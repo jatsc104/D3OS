@@ -7,24 +7,24 @@ use super::e1000_descriptor::{E1000RxDescriptor, E1000TxDescriptor};
 use super::e1000_register::E1000Registers;
 
 
+//left for further future implementation
+#[allow(dead_code)]
 pub fn e1000_fake_test(){
     let device = e1000_device();
     let mac = device.mac_address;
-//    let ethernet_header = build_ethernet_header(mac);
     let data_array: [u8; 64] = [0b01010101; 64];
-//    let mut data_vec = Vec::from(ethernet_header.to_bytes().to_vec());
-//    data_vec.extend_from_slice(&data_array);
-    //fake_transmit(data_vec, device);
 }
 
+//left for future implementation
+#[allow(dead_code)]
 pub fn fake_transmit(data_vec: Vec<u8>, rx_ring: &mut Vec<E1000RxDescriptor>, device: IntelE1000Device) {
     //should be called, when TXDW interrupt is received
 
 }
 
+///Implementation of a loopback mode for the e1000 NIC - if the actual LBM works, this function is not needed
+///Should be called from the interrupt handler, when a TXDW interrupt is received
 pub fn fake_transmit_lbm(rx_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000Registers) {
-    //should be called, when TXDW interrupt is received
-    //while i am at it, i should dealloc the sent data here
 
     //get sent data from tx_ring
     //has to be done via registers, not obtaining a lock within the interrupt handler leads to a deadlock
@@ -36,7 +36,6 @@ pub fn fake_transmit_lbm(rx_ring: &mut Vec<E1000RxDescriptor>, registers: &E1000
     //combine tx_ring_low and tx_ring_high to get the address of the ring
     let tx_ring_address = (tx_ring_high as u64) << 32 | tx_ring_low as u64;
     //get the index of the descriptor that was sent
-//    let sent_index = (tx_ring_tail - 1) % (tx_ring_len/16);
     let sent_index = if tx_ring_tail == 0 {
         (tx_ring_len / 16) - 1
     } else {
