@@ -211,7 +211,7 @@ pub fn e1000_run(){
     info!("Data sent");
 //    Timer::wait(5000);
     let mut rx_data = Vec::new();
-    fetch_rx_data(&mut rx_data);
+//    fetch_rx_data(&mut rx_data);
     fetch_rx_data(&mut rx_data);
     info!("Received data: {:?}", rx_data);
     let status = device.registers.read_status();
@@ -261,17 +261,17 @@ pub fn e1000_large_run(){
     //add payload
     data_vec.extend_from_slice(&data_array);
     data_vec_2.extend_from_slice(&data_array_2);
-    for i in 0..1{
+    for i in 0..250{
         info!("Transmit number: {:?}", i);
         if(i % 2 == 0){
             transmit_test(data_vec.clone(), NetworkProtocol::Ethernet, device);
         }else{
             transmit_test(data_vec_2.clone(), NetworkProtocol::Ethernet, device);
         }
-        info!("Data sent");
+        //info!("Data sent");
         let mut rx_data = Vec::new();
         fetch_rx_data(&mut rx_data);
-        info!("Received data: {:?}", rx_data);
+        //info!("Received data: {:?}", rx_data);
     }
     //transmit_test(data_vec, NetworkProtocol::Ethernet, device);
     //info!("Data sent");
