@@ -34,29 +34,24 @@ impl EthernetHeader{
 
 #[no_mangle]
 pub fn main() {
-    println!("Hello, world!");
-    let mac = syscall0(SystemCall::GetMacAddress);
-    let EthernetHeader = build_ethernet_header(mac);
-    let data_array: [u8; 64] = [0b01010101; 64];
-    let mut data_vec = Vec::from(EthernetHeader.to_bytes().to_vec());
-    data_vec.extend_from_slice(&data_array);
-//TODO: change transmit call to system call - change data_vec to &Vec<u8> and resolve NetworkProtocol enum in syscall
-        //furthermore, i have no access to the device, but since it will never change i can get it inside the syscall
-    let data_ptr = &data_vec as *const _ as usize;
-    syscall2(SystemCall::TransmitData, data_ptr, 0 as usize);
-    //transmit(data_vec, NetworkProtocol::Ethernet, &mut device);
-    println!("Data sent");
-    //wait for the packet to be sent and received/put on the receive queue
-    //timer is not accessible in the application, maybe just loop for quite some time
-    //Timer::wait(5000);
-    for _ in 0..500_000 {
-        // This loop does nothing but waste time.
-    }
-//TODO: change receive_data call to system call -> to return the data, try to give a &mut Vec<u8> as argument
-    let received_data: Vec<u8> = Vec::new();
+
+    //let received_data: Vec<u8> = Vec::new();
+    let received_data: Vec<u8> = Vec::with_capacity(1522);
     let received_data_ptr = &received_data as *const _ as usize;
     syscall1(SystemCall::ReceiveData, received_data_ptr);
-    println!("Received data: {:?}", received_data);
+    if !(received_data.is_empty()) {
+        println!("Received data: {:?}", received_data);
+    }
+    else{
+        let mac = syscall0(SystemCall::GetMacAddress);
+        let EthernetHeader = build_ethernet_header(mac);
+        let data_array: [u8; 64] = [0b01010101; 64];
+        let mut data_vec = Vec::from(EthernetHeader.to_bytes().to_vec());
+        data_vec.extend_from_slice(&data_array);
+        let data_ptr = &data_vec as *const _ as usize;
+        syscall2(SystemCall::TransmitData, data_ptr, 0 as usize);
+        println!("Data sent");
+    }
 }
 
 fn build_ethernet_header(mac: usize) -> EthernetHeader{
