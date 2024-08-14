@@ -1,13 +1,13 @@
 use alloc::vec::Vec;
 use log::info;
 use nolock::queues::spsc::unbounded;
-//use crate::device::e1000_driver::{RX_NEW_DATA, RECEIVED_BUFFER};
 
-//use core::sync::atomic::{AtomicBool, Ordering};
 
 use super::e1000_descriptor::{TxBuffer, tx_conncect_buffer_to_descriptors, RxBufferPacket, tx_conncect_buffer_to_descriptors_vecless};
 use super::e1000_driver::{IntelE1000Device, get_tx_ring};
 
+//Not used, but kept for future feature
+#[allow(dead_code)]
 pub struct E1000Interface{
     rx_buffer: Vec<Vec<u8>>,
     rx_buffer_consumer: unbounded::UnboundedReceiver<Vec<u8>>,
@@ -37,6 +37,7 @@ impl Clone for NetworkProtocol{
     }
 }
 
+///transmits data using the vecless transmit version
 pub fn transmit_test(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE1000Device) {
     //caller has to ensure that the data + the corresponding headers is not larger than the MTU = 1500 bytes
 
@@ -50,6 +51,8 @@ pub fn transmit_test(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE10
     }
 }
 
+///transmits data using the vec transmit version - should not be called
+#[allow(dead_code)]
 pub fn transmit(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE1000Device) {
     //caller has to ensure that the data + the corresponding headers is not larger than the MTU = 1500 bytes
     //but if it is, data gets divided into multiple packets by the driver anyways
@@ -64,6 +67,7 @@ pub fn transmit(data: Vec<u8>, protocol: NetworkProtocol, device: &IntelE1000Dev
     }
 }
 
+///dequeues one packet from the receive buffer
 pub fn receive_data(device: &IntelE1000Device) -> Option<RxBufferPacket>{
     match device.rx_buffer_consumer.try_dequeue() {
         Ok(packet) => Some(packet),
@@ -73,17 +77,3 @@ pub fn receive_data(device: &IntelE1000Device) -> Option<RxBufferPacket>{
         }
     }
 }
-
-//returns ONE packet if available, else None
-//pub fn receive() -> Option<Vec<u8>> {
-//    if RX_NEW_DATA.load(Ordering::SeqCst) {
-//        let mut rx_buffer = RECEIVED_BUFFER.lock();
-//        let data = rx_buffer.pop();
-//        if rx_buffer.is_empty() {
-//            RX_NEW_DATA.store(false, Ordering::SeqCst);
-//        }
-//        data
-//    }else {
-//        None
-//    }
-//}
