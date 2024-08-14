@@ -62,7 +62,7 @@ impl InterruptHandler for E1000InterruptHandler{
         info!("Interrupt cause: {:?}", interrupt_cause);
 
         if interrupt_cause & ICR_TXDW != 0{
-            info!("Transmit Descriptor Written Back");
+            //info!("Transmit Descriptor Written Back");
             //fake loopback mode
             //fake_transmit_lbm(&mut self.rx_ring, &self.registers);
             //rx_ring_pop(&mut self.rx_ring, &self.registers, &self.rx_buffer_producer);
@@ -99,7 +99,8 @@ impl InterruptHandler for E1000InterruptHandler{
             info!("Interrupt handled");
         }
 
-        //do not use RDTR to set the timer, rather use ITR - as suggested by the manual (page 308)
+        //do not use RDTR to set the timer in production, rather use ITR - as suggested by the manual (page 308)
+        //using RDTR in dev is okay
         if interrupt_cause & (ICR_RXT0) != 0{
             //single packet received - data races between interrupt and new packet possible? maybe two packets received at the "same" time?
             //data race technically handled by RXDMT0 and RXO, regular clearing of packets might be a good idea
