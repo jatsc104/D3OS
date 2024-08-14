@@ -6,7 +6,6 @@ use alloc::vec::Vec;
 use syscall::{syscall1, syscall2, SystemCall, syscall0};
 
 use io::{print, println};
-//required for panic handler
 use runtime::*;
 
 struct EthernetHeader{
@@ -35,7 +34,6 @@ impl EthernetHeader{
 #[no_mangle]
 pub fn main() {
 
-    //let received_data: Vec<u8> = Vec::new();
     let received_data: Vec<u8> = Vec::with_capacity(1522);
     let received_data_ptr = &received_data as *const _ as usize;
     syscall1(SystemCall::ReceiveData, received_data_ptr);
