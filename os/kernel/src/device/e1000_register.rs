@@ -1,5 +1,4 @@
 
-//use super::pit::Timer;
 use crate::device::pit::Timer;
 use x86_64::VirtAddr;
 
@@ -84,7 +83,6 @@ impl E1000Registers{
     pub fn new(mmio_address: VirtAddr) -> Self{
         let mmio_address_u64 = mmio_address.as_u64();
         //init network card - see chapter 14 in intel doc - most over ctrl register
-        //move job to e1000 driver - maybe just function call
 
 
         Self{
@@ -129,20 +127,9 @@ impl E1000Registers{
 
         //enable auto-negotiation in eeprom, so card starts auto-negotiation immediately after reset - intel doc 8.5
         //auto negotiation determines duplex resolution and flow control configuration
-        //maybe dont touch the eeprom, unless absolutely necessary, since it is kind of, eh, permanent..
         //auto-negotiation should be enabled after reset, refer to intel doc 5.6.7/5-5
 
 
-
-//        const CTRL_RST: u32 = 1 << 26;
-//        self.write_ctrl(CTRL_RST);
-        //wait for reset to complete
-        //timer for 1 ms
-//        Timer::wait(1);
-        //does this work?
-//        while self.read_ctrl() & CTRL_RST != 0{
-            //wait
-//        }
 
         const CTRL_ASDE: u32 = 1 << 5;
         const CTRL_SLU: u32 = 1 << 6;
@@ -158,14 +145,6 @@ impl E1000Registers{
         ctrl &= !clear_mask;
         ctrl |= CTRL_ASDE | CTRL_SLU;
         self.write_ctrl(ctrl);
-
-        //config transmit and receive units
-
-
-        //set up transmit and reveive descriptor rings
-
-        //enable interrupts
-
 
         //set fcal register to 0
         unsafe{
@@ -359,7 +338,6 @@ impl E1000Registers{
         }
     }
 
-    //not sure wether deref pointers in struct would be better, but this is more explicit
     pub fn read_ctrl(&self) -> u32{
         unsafe{
             core::ptr::read_volatile(self.ctrl as *const u32)
