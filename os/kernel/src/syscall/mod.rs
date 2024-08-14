@@ -14,7 +14,7 @@ use crate::memory::{MemorySpace, PAGE_SIZE};
 use crate::memory::r#virtual::{VirtualMemoryArea, VmaType};
 use crate::process::thread::Thread;
 
-use super::device::e1000_interface::{NetworkProtocol, transmit, receive_data};
+use super::device::e1000_interface::{NetworkProtocol, transmit, receive_data, transmit_test};
 use super::device::e1000_descriptor::RxBufferPacket;
 
 pub mod syscall_dispatcher;
@@ -190,7 +190,7 @@ pub extern "C" fn sys_transmit_data(data: usize, protocol: usize) {
         0 => NetworkProtocol::Ethernet,
         _ => panic!("Unsupported network protocol")
     };
-    transmit(data.clone(), protocol, &device);
+    transmit_test(data.clone(), protocol, &device);
 }
 
 /// Wrapper for the kernel receive function.
