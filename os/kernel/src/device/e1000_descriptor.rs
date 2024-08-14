@@ -23,8 +23,8 @@ use super::e1000_driver::MTU;
 #[repr(C)]
 #[derive(Debug)]
 pub struct E1000TxDescriptor {
-    pub buffer_addr: u64,   //public for debug purposes, should be private
-    pub length: u16,        //public for debug purposes, should be private
+    pub buffer_addr: u64,   //public for debug purposes, should be private - fake_lbm requires theses to be public
+    pub length: u16,        //public for debug purposes, should be private - fake_lbm requires theses to be public
     cso: u8,
     cmd: u8,
     status: u8,
@@ -35,10 +35,10 @@ pub struct E1000TxDescriptor {
 // Define the receive descriptor
 #[repr(C)]
 pub struct E1000RxDescriptor {
-    pub buffer_addr: u64,   //public for debug purposes, should be private
-    pub length: u16,        //public for debug purposes, should be private
+    pub buffer_addr: u64,   //public for debug purposes, should be private - fake_lbm requires theses to be public
+    pub length: u16,        //public for debug purposes, should be private - fake_lbm requires theses to be public
     csum: u16,
-    pub status: u8,             //public for debug purposes, should be private
+    pub status: u8,             //public for debug purposes, should be private - fake_lbm requires theses to be public
     errors: u8,
     special: u16,
 }
